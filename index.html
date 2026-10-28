@@ -23,6 +23,8 @@ input,select{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px
 dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);color:var(--tx);width:min(420px,92vw)}
 .kan{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;overflow-x:auto}.col{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:8px;min-height:160px}
 .col h3{margin:2px 4px 8px;font-size:14px}.k{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:8px;cursor:grab;font-size:14px}
+.wa{display:grid;grid-template-columns:140px minmax(220px,1fr) 150px;gap:10px;overflow-x:auto}.chat{min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:8px}.msg{max-width:80%;padding:6px 10px;border-radius:10px;margin-bottom:6px;background:var(--bg)}.msg.u,.msg.s{margin-left:auto;background:var(--ac);color:#fff}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(70px,1fr));gap:4px;overflow-x:auto}.d{background:var(--card);border:1px solid var(--bd);border-radius:8px;min-height:64px;padding:4px;font-size:12px;cursor:pointer}.d i{display:block;font-style:normal;background:var(--ac);color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -39,7 +41,7 @@ const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
 const today=()=>new Date().toISOString().slice(0,10);
 const ST=[['nuevo','Nuevo'],['produccion','Producción'],['entrega','Entrega'],['finalizado','Finalizado']];
 const lab=e=>(ST.find(x=>x[0]===e)||[0,e])[1];
-const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['productos','Productos']];
+const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['productos','Productos']];
 const CFG={
 clientes:{t:'CRM Clientes',f:[['nombre','Nombre'],['telefono','Teléfono'],['email','Email'],['vip','VIP','select',['No','Sí']],['observaciones','Observaciones']]},
 productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number']]}};
@@ -80,6 +82,29 @@ kanban(){return `<h2>Producción</h2><div class="kan">${ST.map(([k,l])=>`<div cl
 ${S.pedidos.filter(o=>o.estado===k).map(o=>`<div class="k" draggable="true" ondragstart="event.dataTransfer.setData('t','${o.id}')"><b>#${o.numero} ${esc(cname(o.cliente_id))}</b><br>${esc(itxt(o))}<br><span class="mu">${o.fecha_entrega||''} · ${money(o.total)}</span><br><button class="btn g" onclick="mv('${o.id}',-1)">◀</button> <button class="btn g" onclick="mv('${o.id}',1)">▶</button></div>`).join('')}</div>`).join('')}</div>`}
 };
 
+let cal=new Date(),selDay=null,wa={cid:null,conv:null,msgs:[]};
+V.calendario=()=>{const y=cal.getFullYear(),m=cal.getMonth(),first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+let h=`<h2><button class="btn g" onclick="cm(-1)">◀</button> ${cal.toLocaleDateString('es-AR',{month:'long',year:'numeric'})} <button class="btn g" onclick="cm(1)">▶</button></h2><div class="cal">`;
+['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].forEach(d=>h+=`<div class="mu">${d}</div>`);
+for(let i=0;i<first;i++)h+='<div></div>';
+for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,c=S.pedidos.filter(o=>o.fecha_entrega===ds).length;
+h+=`<div class="d" onclick="selDay='${ds}';render()"><b>${d}</b>${c?`<i>${c} pedido${c>1?'s':''}</i>`:''}</div>`}
+h+='</div>';
+if(selDay){const L=S.pedidos.filter(o=>o.fecha_entrega===selDay);h+=`<div class="card" style="margin-top:10px"><b>${selDay}</b>${L.map(o=>`<div>#${o.numero} ${esc(cname(o.cliente_id))} · ${esc(itxt(o))} · ${lab(o.estado)}</div>`).join('')||'<div class="mu">Sin pedidos</div>'}</div>`}
+return h};
+function cm(d){cal=new Date(cal.getFullYear(),cal.getMonth()+d,1);render()}
+V.whatsapp=()=>{const c=S.clientes.find(x=>x.id===wa.cid);
+return `<h2>WhatsApp Business</h2><div class="wa"><div class="card">${S.clientes.map(x=>`<button class="btn ${x.id===wa.cid?'':'g'}" style="display:block;width:100%;margin-bottom:6px" onclick="selC('${x.id}')">${esc(x.nombre)}</button>`).join('')||'<span class="mu">Sin clientes</span>'}</div>
+<div class="card">${c?`<div class="chat">${wa.msgs.map(m=>`<div class="msg ${m.emisor[0]}"><small>${m.emisor==='cliente'?'Cliente':m.emisor==='sistema'?'FoodSuite AI':'Equipo'}</small><br>${esc(m.texto)}</div>`).join('')||'<span class="mu">Sin mensajes</span>'}</div><input id="w_t" placeholder="Escribí un mensaje"><button class="btn" onclick="sendW('usuario')">Enviar</button> <button class="btn g" onclick="sendW('cliente')">Simular mensaje del cliente</button> ${c.telefono?`<a class="btn g" target="_blank" rel="noopener" href="https://wa.me/${esc(c.telefono.replace(/\D/g,''))}">Abrir en WhatsApp</a>`:''}`:'<span class="mu">Elegí un cliente</span>'}</div>
+<div class="card">${c?`<b>${esc(c.nombre)}</b><p>${c.vip?'VIP':'Regular'}<br>${cs(c.id).n} compras<br>${money(cs(c.id).t)} gastado</p>`:''}</div></div>`};
+async function selC(id){wa.cid=id;wa.conv=null;wa.msgs=[];const{data}=await SB.from('conversaciones').select('id').eq('cliente_id',id).limit(1);if(data&&data[0]){wa.conv=data[0].id;await loadM()}render()}
+async function loadM(){const{data}=await SB.from('mensajes').select('*').eq('conversacion_id',wa.conv).order('creado_en');wa.msgs=data||[]}
+async function sendW(f){const t=$('#w_t').value.trim();if(!t)return;
+if(!wa.conv){const{data,error}=await SB.from('conversaciones').insert({empresa_id:S.eid,cliente_id:wa.cid}).select().single();if(err(error))return;wa.conv=data.id}
+const rows=[{emisor:f,texto:t}];
+if(f==='cliente')rows.push({emisor:'sistema',texto:/torta/i.test(t)?'Perfecto. ¿Para qué fecha?':'¡Hola! ¿En qué te puedo ayudar?'});
+for(const r of rows){const{error}=await SB.from('mensajes').insert({...r,empresa_id:S.eid,conversacion_id:wa.conv});if(err(error))return}
+await loadM();render()}
 function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
 $('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
 async function sv(k,id){const row={};CFG[k].f.forEach(([n,,t])=>{let v=$('#f_'+n).value.trim();row[n]=n==='vip'?v==='Sí':t==='number'?Number(v||0):(v||null)});
