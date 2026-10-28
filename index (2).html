@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>FoodSuite AI</title>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--tx:#2b2118;--mu:#7a6a5c;--ac:#d9531e;--bd:#e8dfd3}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1612;--card:#262019;--tx:#f3ebe1;--mu:#a8998a;--ac:#f0743e;--bd:#3a3128}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:12px 16px;font-weight:700;font-size:18px;display:flex;gap:10px;align-items:center}header span{color:var(--ac)}#emp{font-weight:400;color:var(--mu);font-size:14px}#out{margin-left:auto}
+nav{display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px}
+nav button{white-space:nowrap;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:7px 12px;border-radius:20px;cursor:pointer}
+nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{padding:0 16px 24px;max-width:1100px;margin:auto}h2{margin:6px 0 12px;font-size:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpi b{display:block;font-size:24px}.kpi small,.mu{color:var(--mu)}
+.btn{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}.btn.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);white-space:nowrap}th{color:var(--mu);font-size:13px}
+input,select{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;margin:3px 0 8px}label{font-size:13px;color:var(--mu)}
+dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);color:var(--tx);width:min(420px,92vw)}
+.kan{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;overflow-x:auto}.col{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:8px;min-height:160px}
+.col h3{margin:2px 4px 8px;font-size:14px}.k{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:8px;cursor:grab;font-size:14px}
+</style>
+</head>
+<body>
+<header>🍽️ FoodSuite <span>AI</span> <span id="emp"></span><button class="btn g" id="out" style="display:none" onclick="logout()">Salir</button></header>
+<nav id="nav"></nav>
+<main id="app"></main>
+<dialog id="dlg"><div id="dbody"></div></dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB=window.supabase.createClient('https://gxlcfutcmmjfstnawxyt.supabase.co','sb_publishable_uNMs5gLEP3B5CbCjZ2V5gA_tAsYbQa5');
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
+const today=()=>new Date().toISOString().slice(0,10);
+const ST=[['nuevo','Nuevo'],['produccion','Producción'],['entrega','Entrega'],['finalizado','Finalizado']];
+const lab=e=>(ST.find(x=>x[0]===e)||[0,e])[1];
+const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['productos','Productos']];
+const CFG={
+clientes:{t:'CRM Clientes',f:[['nombre','Nombre'],['telefono','Teléfono'],['email','Email'],['vip','VIP','select',['No','Sí']],['observaciones','Observaciones']]},
+productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number']]}};
+let S={clientes:[],productos:[],pedidos:[]},view='dashboard',draft=[];
+const err=e=>{if(e){alert('Error: '+e.message);return true}};
+const cname=id=>(S.clientes.find(x=>x.id===id)||{}).nombre||'?';
+const pname=id=>(S.productos.find(x=>x.id===id)||{}).nombre||'?';
+const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ');
+const cs=id=>{const P=S.pedidos.filter(o=>o.cliente_id===id);return{n:P.length,t:P.reduce((s,o)=>s+Number(o.total),0)}};
+
+async function boot(){const{data}=await SB.auth.getSession();data.session?load():showLogin()}
+function showLogin(){$('nav').innerHTML='';$('#out').style.display='none';$('#emp').textContent='';
+$('#app').innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><h2>Ingresar</h2><label>Email</label><input id="l_e" type="email"><label>Password</label><input id="l_p" type="password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Ingresar</button></div>`}
+async function login(){const{error}=await SB.auth.signInWithPassword({email:$('#l_e').value.trim(),password:$('#l_p').value});if(err(error))return;load()}
+async function logout(){await SB.auth.signOut();showLogin()}
+async function load(){
+const{data:{user}}=await SB.auth.getUser();
+const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre)').eq('id',user.id).single();
+if(e1||!me){alert('Tu usuario no está vinculado a ninguna empresa.');return logout()}
+S.eid=me.empresa_id;$('#emp').textContent='· '+(me.empresas?.nombre||'');
+const[c,p,o]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false})]);
+if(err(c.error||p.error||o.error))return;
+S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;$('#out').style.display='';render()}
+function go(v){view=v;render()}
+function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]()}
+
+const V={
+dashboard(){const m=today().slice(0,7),P=S.pedidos.filter(o=>(o.fecha_entrega||o.creado_en||'').slice(0,7)===m),t=P.reduce((s,o)=>s+Number(o.total),0),n=P.length;
+return `<h2>Dashboard</h2><div class="grid"><div class="card kpi"><small>Ventas del mes</small><b>${money(t)}</b></div><div class="card kpi"><small>Pedidos</small><b>${n}</b></div><div class="card kpi"><small>Clientes</small><b>${S.clientes.length}</b></div><div class="card kpi"><small>Ticket medio</small><b>${money(n?t/n:0)}</b></div></div>
+<div class="card"><b>Pedidos por estado</b>${ST.map(([k,l])=>`<div>${l}: ${S.pedidos.filter(o=>o.estado===k).length}</div>`).join('')}</div>`},
+clientes(){return `<h2>${CFG.clientes.t} <button class="btn" onclick="edit('clientes')">+ Nuevo Cliente</button></h2><div class="card scroll"><table><tr><th>Cliente</th><th>Teléfono</th><th>Compras</th><th>Facturación</th><th>Estado</th><th></th></tr>
+${S.clientes.map(c=>{const s=cs(c.id);return `<tr><td>${esc(c.nombre)}</td><td>${esc(c.telefono)}</td><td>${s.n}</td><td>${money(s.t)}</td><td>${c.vip?'VIP':'Regular'}</td><td><button class="btn g" onclick="edit('clientes','${c.id}')">Editar</button> <button class="btn g" onclick="del('clientes','${c.id}')">✕</button></td></tr>`}).join('')}</table></div>`},
+productos(){return `<h2>Productos <button class="btn" onclick="edit('productos')">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>Nombre</th><th>Precio</th><th></th></tr>
+${S.productos.map(p=>`<tr><td>${esc(p.nombre)}</td><td>${money(p.precio)}</td><td><button class="btn g" onclick="edit('productos','${p.id}')">Editar</button> <button class="btn g" onclick="del('productos','${p.id}')">✕</button></td></tr>`).join('')}</table></div>`},
+pedidos(){return `<h2>Pedidos <button class="btn" onclick="newPed()">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>#</th><th>Cliente</th><th>Detalle</th><th>Entrega</th><th>Total</th><th>Estado</th><th></th></tr>
+${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(cname(o.cliente_id))}</td><td>${esc(itxt(o))}</td><td>${o.fecha_entrega||''}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td><button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
+kanban(){return `<h2>Producción</h2><div class="kan">${ST.map(([k,l])=>`<div class="col" ondragover="event.preventDefault()" ondrop="drop(event,'${k}')"><h3>${l}</h3>
+${S.pedidos.filter(o=>o.estado===k).map(o=>`<div class="k" draggable="true" ondragstart="event.dataTransfer.setData('t','${o.id}')"><b>#${o.numero} ${esc(cname(o.cliente_id))}</b><br>${esc(itxt(o))}<br><span class="mu">${o.fecha_entrega||''} · ${money(o.total)}</span><br><button class="btn g" onclick="mv('${o.id}',-1)">◀</button> <button class="btn g" onclick="mv('${o.id}',1)">▶</button></div>`).join('')}</div>`).join('')}</div>`}
+};
+
+function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
+$('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
+async function sv(k,id){const row={};CFG[k].f.forEach(([n,,t])=>{let v=$('#f_'+n).value.trim();row[n]=n==='vip'?v==='Sí':t==='number'?Number(v||0):(v||null)});
+if(!row.nombre)return alert('El nombre es obligatorio');
+const q=id?SB.from(k).update(row).eq('id',id):SB.from(k).insert({...row,empresa_id:S.eid});
+const{error}=await q;if(err(error))return;$('#dlg').close();load()}
+async function del(k,id){if(!confirm('¿Eliminar?'))return;const{error}=await SB.from(k).delete().eq('id',id);if(err(error))return;load()}
+
+function newPed(){draft=[];pedForm({fecha_entrega:today(),estado:'nuevo'})}
+function pedForm(o){if(!S.clientes.length||!S.productos.length)return alert('Primero cargá al menos un cliente y un producto.');
+const opt=(a,s)=>a.map(x=>`<option value="${x.id}" ${x.id===s?'selected':''}>${esc(x.nombre)}</option>`).join('');
+$('#dbody').innerHTML=`<h3>Nuevo pedido</h3><label>Cliente</label><select id="p_c">${opt(S.clientes,o.cliente_id)}</select><label>Productos</label>
+<div>${draft.map((i,x)=>`<div>${i.q}× ${esc(pname(i.p))} <button class="btn g" onclick="rmI(${x})">✕</button></div>`).join('')||'<span class="mu">Sin productos</span>'}</div>
+<select id="p_p">${opt(S.productos)}</select><input id="p_q" type="number" min="1" value="1"><button class="btn g" onclick="addI()">+ Agregar producto</button>
+<label>Fecha de entrega</label><input id="p_f" type="date" value="${o.fecha_entrega||today()}"><label>Estado</label><select id="p_e">${ST.map(([k,l])=>`<option value="${k}" ${o.estado===k?'selected':''}>${l}</option>`).join('')}</select>
+<button class="btn" onclick="svP()">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;if(!$('#dlg').open)$('#dlg').showModal()}
+const keep=()=>({cliente_id:$('#p_c').value,fecha_entrega:$('#p_f').value,estado:$('#p_e').value});
+function addI(){const o=keep();draft.push({p:$('#p_p').value,q:Math.max(1,+$('#p_q').value||1)});pedForm(o)}
+function rmI(x){const o=keep();draft.splice(x,1);pedForm(o)}
+async function svP(){if(!draft.length)return alert('Agregá al menos un producto');
+const price=id=>Number((S.productos.find(x=>x.id===id)||{}).precio||0),total=draft.reduce((s,i)=>s+price(i.p)*i.q,0);
+const{data,error}=await SB.from('pedidos').insert({...keep(),empresa_id:S.eid,total}).select().single();if(err(error))return;
+const{error:e2}=await SB.from('pedido_detalle').insert(draft.map(i=>({empresa_id:S.eid,pedido_id:data.id,producto_id:i.p,cantidad:i.q,precio_unitario:price(i.p)})));if(err(e2))return;
+$('#dlg').close();load()}
+async function setEst(id,e){const{error}=await SB.from('pedidos').update({estado:e}).eq('id',id);if(err(error))return;load()}
+function mv(id,d){const o=S.pedidos.find(x=>x.id===id),i=ST.findIndex(x=>x[0]===o.estado)+d;if(i>=0&&i<ST.length)setEst(id,ST[i][0])}
+function drop(e,k){e.preventDefault();const id=e.dataTransfer.getData('t');if(id)setEst(id,k)}
+boot();
+</script>
+</body>
+</html>
