@@ -25,6 +25,8 @@ dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);colo
 .col h3{margin:2px 4px 8px;font-size:14px}.k{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:8px;cursor:grab;font-size:14px}
 .wa{display:grid;grid-template-columns:140px minmax(220px,1fr) 150px;gap:10px;overflow-x:auto}.chat{min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:8px}.msg{max-width:80%;padding:6px 10px;border-radius:10px;margin-bottom:6px;background:var(--bg)}.msg.u,.msg.s{margin-left:auto;background:var(--ac);color:#fff}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(70px,1fr));gap:4px;overflow-x:auto}.d{background:var(--card);border:1px solid var(--bd);border-radius:8px;min-height:64px;padding:4px;font-size:12px;cursor:pointer}.d i{display:block;font-style:normal;background:var(--ac);color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px}
+.qrs{display:flex;flex-wrap:wrap;gap:16px;margin:10px 0}.qrc{text-align:center;max-width:180px}.qrc img{width:160px;height:160px;image-rendering:pixelated}.qrc small{display:block;word-break:break-all;font-size:10px}
+@media print{header,nav,.btn,label,input,.card>p{display:none!important}.qrc{break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -33,6 +35,7 @@ dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);colo
 <main id="app"></main>
 <dialog id="dlg"><div id="dbody"></div></dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 const SB=window.supabase.createClient('https://gxlcfutcmmjfstnawxyt.supabase.co','sb_publishable_uNMs5gLEP3B5CbCjZ2V5gA_tAsYbQa5');
 const $=s=>document.querySelector(s);
@@ -41,15 +44,15 @@ const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
 const today=()=>new Date().toISOString().slice(0,10);
 const ST=[['nuevo','Nuevo'],['produccion','Producción'],['entrega','Entrega'],['finalizado','Finalizado']];
 const lab=e=>(ST.find(x=>x[0]===e)||[0,e])[1];
-const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['productos','Productos']];
+const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['productos','Productos'],['categorias','Categorías'],['qr','QR local']];
 const CFG={
 clientes:{t:'CRM Clientes',f:[['nombre','Nombre'],['telefono','Teléfono'],['email','Email'],['vip','VIP','select',['No','Sí']],['observaciones','Observaciones']]},
-productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number']]}};
-let S={clientes:[],productos:[],pedidos:[]},view='dashboard',draft=[];
+productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number'],['descripcion','Descripción']]}};
+let S={clientes:[],productos:[],pedidos:[],categorias:[]},view='dashboard',draft=[];
 const err=e=>{if(e){alert('Error: '+e.message);return true}};
 const cname=id=>(S.clientes.find(x=>x.id===id)||{}).nombre||'?';
 const pname=id=>(S.productos.find(x=>x.id===id)||{}).nombre||'?';
-const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ');
+const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ')+(o.notas?' — "'+o.notas+'"':'');
 const cs=id=>{const P=S.pedidos.filter(o=>o.cliente_id===id);return{n:P.length,t:P.reduce((s,o)=>s+Number(o.total),0)}};
 
 async function boot(){const{data}=await SB.auth.getSession();data.session?load():showLogin()}
@@ -59,14 +62,14 @@ async function login(){const{error}=await SB.auth.signInWithPassword({email:$('#
 async function logout(){await SB.auth.signOut();showLogin()}
 async function load(){
 const{data:{user}}=await SB.auth.getUser();
-const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre)').eq('id',user.id).single();
+const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro)').eq('id',user.id).single();
 if(e1||!me){alert('Tu usuario no está vinculado a ninguna empresa.');return logout()}
-S.eid=me.empresa_id;$('#emp').textContent='· '+(me.empresas?.nombre||'');
-const[c,p,o]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false})]);
-if(err(c.error||p.error||o.error))return;
-S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;$('#out').style.display='';render()}
+S.eid=me.empresa_id;S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(me.empresas?.nombre||'');
+const[c,p,o,ct]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false}),SB.from('categorias').select('*').order('orden').order('nombre')]);
+if(err(c.error||p.error||o.error||ct.error))return;
+S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;$('#out').style.display='';render()}
 function go(v){view=v;render()}
-function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]()}
+function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]();if(view==='qr')drawQR()}
 
 const V={
 dashboard(){const m=today().slice(0,7),P=S.pedidos.filter(o=>(o.fecha_entrega||o.creado_en||'').slice(0,7)===m),t=P.reduce((s,o)=>s+Number(o.total),0),n=P.length;
@@ -74,8 +77,8 @@ return `<h2>Dashboard</h2><div class="grid"><div class="card kpi"><small>Ventas 
 <div class="card"><b>Pedidos por estado</b>${ST.map(([k,l])=>`<div>${l}: ${S.pedidos.filter(o=>o.estado===k).length}</div>`).join('')}</div>`},
 clientes(){return `<h2>${CFG.clientes.t} <button class="btn" onclick="edit('clientes')">+ Nuevo Cliente</button></h2><div class="card scroll"><table><tr><th>Cliente</th><th>Teléfono</th><th>Compras</th><th>Facturación</th><th>Estado</th><th></th></tr>
 ${S.clientes.map(c=>{const s=cs(c.id);return `<tr><td>${esc(c.nombre)}</td><td>${esc(c.telefono)}</td><td>${s.n}</td><td>${money(s.t)}</td><td>${c.vip?'VIP':'Regular'}</td><td><button class="btn g" onclick="edit('clientes','${c.id}')">Editar</button> <button class="btn g" onclick="del('clientes','${c.id}')">✕</button></td></tr>`}).join('')}</table></div>`},
-productos(){return `<h2>Productos <button class="btn" onclick="edit('productos')">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>Nombre</th><th>Precio</th><th></th></tr>
-${S.productos.map(p=>`<tr><td>${esc(p.nombre)}</td><td>${money(p.precio)}</td><td><button class="btn g" onclick="edit('productos','${p.id}')">Editar</button> <button class="btn g" onclick="del('productos','${p.id}')">✕</button></td></tr>`).join('')}</table></div>`},
+productos(){return `<h2>Productos <button class="btn" onclick="edit('productos')">+ Nuevo</button></h2><div class="card scroll"><table><tr><th></th><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr>
+${S.productos.map(p=>`<tr><td>${p.imagen_url?`<img src="${esc(p.imagen_url)}" width="44" height="44" style="object-fit:cover;border-radius:8px">`:''}</td><td>${esc(p.nombre)}</td><td>${esc(catn(p.categoria_id))}</td><td>${money(p.precio)}</td><td><button class="btn g" onclick="edit('productos','${p.id}')">Editar</button> <button class="btn g" onclick="del('productos','${p.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 pedidos(){return `<h2>Pedidos <button class="btn" onclick="newPed()">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>#</th><th>Cliente</th><th>Detalle</th><th>Entrega</th><th>Total</th><th>Estado</th><th></th></tr>
 ${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(cname(o.cliente_id))}</td><td>${esc(itxt(o))}</td><td>${o.fecha_entrega||''}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td><button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 kanban(){return `<h2>Producción</h2><div class="kan">${ST.map(([k,l])=>`<div class="col" ondragover="event.preventDefault()" ondrop="drop(event,'${k}')"><h3>${l}</h3>
@@ -105,10 +108,30 @@ const rows=[{emisor:f,texto:t}];
 if(f==='cliente')rows.push({emisor:'sistema',texto:/torta/i.test(t)?'Perfecto. ¿Para qué fecha?':'¡Hola! ¿En qué te puedo ayudar?'});
 for(const r of rows){const{error}=await SB.from('mensajes').insert({...r,empresa_id:S.eid,conversacion_id:wa.conv});if(err(error))return}
 await loadM();render()}
+const catn=id=>(S.categorias.find(x=>x.id===id)||{}).nombre||'—';
+const SUG={pasteler:['Tortas','Cheesecakes','Tartas','Cupcakes y postres','Panificados'],cafeter:['Cafés','Té e infusiones','Bebidas frías','Pastelería','Sándwiches y tostados'],panader:['Panes','Facturas','Tortas','Sándwiches de miga','Salados'],restaur:['Entradas','Platos principales','Pastas','Parrilla','Postres','Bebidas']};
+const sugeridas=()=>{const r=(S.rubro||'').toLowerCase(),k=Object.keys(SUG).find(x=>r.includes(x));return k?SUG[k].filter(n=>!S.categorias.some(c=>c.nombre.toLowerCase()===n.toLowerCase())):[]};
+V.categorias=()=>{const sg=sugeridas();
+return `<h2>Categorías <button class="btn" onclick="addCat()">+ Nueva</button></h2><p class="mu">Armá las categorías como está organizada la carta de tu local. Este es el orden en que las ve el cliente.</p>${sg.length?`<div class="card" style="margin-bottom:10px"><b>Ideas para ${esc(S.rubro)}</b> <span class="mu">(tocá las que te sirvan, o ignoralas)</span><div class="qrs">${sg.map(x=>`<button class="btn g" onclick="addCat('${esc(x)}')">+ ${esc(x)}</button>`).join('')}</div></div>`:''}<div class="card scroll"><table><tr><th>Nombre</th><th>Productos</th><th></th></tr>${S.categorias.map((c,i)=>`<tr><td>${esc(c.nombre)}</td><td>${S.productos.filter(p=>p.categoria_id===c.id).length}</td><td><button class="btn g" onclick="movCat(${i},-1)">↑</button> <button class="btn g" onclick="movCat(${i},1)">↓</button> <button class="btn g" onclick="renCat('${c.id}')">Renombrar</button> <button class="btn g" onclick="delCat('${c.id}')">✕</button></td></tr>`).join('')||'<tr><td class="mu">Todavía no creaste categorías</td></tr>'}</table></div>`};
+async function addCat(nombre){const n=(nombre||prompt('Nombre de la categoría')||'').trim();if(!n)return;const{error}=await SB.from('categorias').insert({empresa_id:S.eid,nombre:n,orden:S.categorias.length+1});if(err(error))return;load()}
+async function renCat(id){const c=S.categorias.find(x=>x.id===id),n=(prompt('Nuevo nombre',c.nombre)||'').trim();if(!n||n===c.nombre)return;const{error}=await SB.from('categorias').update({nombre:n}).eq('id',id);if(err(error))return;load()}
+async function movCat(i,d){const a=S.categorias[i],b=S.categorias[i+d];if(!a||!b)return;const L=S.categorias.slice();L.splice(i,1);L.splice(i+d,0,a);for(let k=0;k<L.length;k++){const{error}=await SB.from('categorias').update({orden:k+1}).eq('id',L[k].id);if(err(error))return}load()}
+async function delCat(id){if(!confirm('¿Eliminar la categoría? Los productos quedan sin categoría.'))return;const{error}=await SB.from('categorias').delete().eq('id',id);if(err(error))return;load()}
+let mesas=0;
+const urlBase=()=>new URL('pedir.html',location.href).href+'?e='+encodeURIComponent(S.slug);
+V.qr=()=>`<h2>QR del local</h2><div class="card"><p>Imprimí el QR y ponelo en el mostrador o en las mesas. El cliente lo escanea con la cámara del celular y ve tu catálogo por categorías.</p><div class="qrs"><div class="qrc"><div id="qr0"></div><b>Catálogo general</b><small class="mu">${esc(urlBase())}</small></div></div>
+<label>Cantidad de mesas (opcional: un QR por mesa)</label><input type="number" min="0" max="60" value="${mesas}" onchange="mesas=Math.min(60,Math.max(0,+this.value||0));render()"><div class="qrs">${Array.from({length:mesas},(_,i)=>`<div class="qrc"><div id="qr${i+1}"></div><b>Mesa ${i+1}</b></div>`).join('')}</div><button class="btn g" onclick="window.print()">Imprimir</button></div>`;
+function drawQR(){for(let i=0;i<=mesas;i++){const q=qrcode(0,'M');q.addData(i?urlBase()+'&m='+i:urlBase());q.make();$('#qr'+i).innerHTML=q.createImgTag(4,2)}}
 function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
-$('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
+$('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}${k==='productos'?'<label>Categoría</label><select id="f_cat"><option value="">Sin categoría</option>'+S.categorias.map(c=>`<option value="${c.id}" ${r.categoria_id===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')+'</select><label>Foto</label><input id="f_img" type="file" accept="image/*">':''}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
+async function upImg(file){const bm=await createImageBitmap(file),sc=Math.min(1,800/Math.max(bm.width,bm.height)),cv=document.createElement('canvas');cv.width=Math.round(bm.width*sc);cv.height=Math.round(bm.height*sc);cv.getContext('2d').drawImage(bm,0,0,cv.width,cv.height);
+const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.8)),path=S.eid+'/'+Date.now()+'.jpg';
+const{error}=await SB.storage.from('productos').upload(path,blob,{contentType:'image/jpeg'});if(error)throw error;
+return SB.storage.from('productos').getPublicUrl(path).data.publicUrl}
 async function sv(k,id){const row={};CFG[k].f.forEach(([n,,t])=>{let v=$('#f_'+n).value.trim();row[n]=n==='vip'?v==='Sí':t==='number'?Number(v||0):(v||null)});
 if(!row.nombre)return alert('El nombre es obligatorio');
+if(k==='productos')row.categoria_id=$('#f_cat').value||null;
+if(k==='productos'&&$('#f_img')&&$('#f_img').files[0]){try{row.imagen_url=await upImg($('#f_img').files[0])}catch(e){return alert('Error al subir la foto: '+e.message)}}
 const q=id?SB.from(k).update(row).eq('id',id):SB.from(k).insert({...row,empresa_id:S.eid});
 const{error}=await q;if(err(error))return;$('#dlg').close();load()}
 async function del(k,id){if(!confirm('¿Eliminar?'))return;const{error}=await SB.from(k).delete().eq('id',id);if(err(error))return;load()}
