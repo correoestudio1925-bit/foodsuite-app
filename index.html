@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google" content="notranslate">
+<link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
 <title>FoodSuite AI</title>
 <style>
 :root{--bg:#faf7f2;--card:#fff;--tx:#2b2118;--mu:#7a6a5c;--ac:#d9531e;--bd:#e8dfd3}
@@ -27,10 +28,12 @@ dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);colo
 .cal{display:grid;grid-template-columns:repeat(7,minmax(70px,1fr));gap:4px;overflow-x:auto}.d{background:var(--card);border:1px solid var(--bd);border-radius:8px;min-height:64px;padding:4px;font-size:12px;cursor:pointer}.d i{display:block;font-style:normal;background:var(--ac);color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px}
 .qrs{display:flex;flex-wrap:wrap;gap:16px;margin:10px 0}.qrc{text-align:center;max-width:180px}.qrc img{width:160px;height:160px;image-rendering:pixelated}.qrc small{display:block;word-break:break-all;font-size:10px}
 @media print{header,nav,.btn,label,input,.card>p{display:none!important}.qrc{break-inside:avoid}}
+.mark,.brand{color:#7a4b22}.mark{display:inline-flex}.brand{font-family:Pacifico,"Brush Script MT","Segoe Script",cursive;font-weight:400;font-size:24px;line-height:1}.brand b{color:var(--ac);font-weight:400}
+@media (prefers-color-scheme:dark){.mark,.brand{color:#e8c9a0}}
 </style>
 </head>
 <body>
-<header>🍽️ FoodSuite <span>AI</span> <span id="emp"></span><button class="btn g" id="out" style="display:none" onclick="logout()">Salir</button></header>
+<header><span class="mark" id="logo"></span><span class="brand">FoodSuite <b>AI</b></span><span id="emp"></span><button class="btn g" id="out" style="display:none" onclick="logout()">Salir</button></header>
 <nav id="nav"></nav>
 <main id="app"></main>
 <dialog id="dlg"><div id="dbody"></div></dialog>
@@ -41,33 +44,33 @@ const SB=window.supabase.createClient('https://gxlcfutcmmjfstnawxyt.supabase.co'
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 const ST=[['nuevo','Nuevo'],['produccion','Producción'],['entrega','Entrega'],['finalizado','Finalizado']];
 const lab=e=>(ST.find(x=>x[0]===e)||[0,e])[1];
-const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['productos','Productos'],['categorias','Categorías'],['qr','QR local']];
+const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['reservas','Reservas'],['productos','Productos'],['categorias','Categorías'],['qr','QR local'],['negocio','Mi negocio']];
 const CFG={
 clientes:{t:'CRM Clientes',f:[['nombre','Nombre'],['telefono','Teléfono'],['email','Email'],['vip','VIP','select',['No','Sí']],['observaciones','Observaciones']]},
 productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number'],['descripcion','Descripción']]}};
-let S={clientes:[],productos:[],pedidos:[],categorias:[]},view='dashboard',draft=[];
+let S={clientes:[],productos:[],pedidos:[],categorias:[],reservas:[]},view='dashboard',draft=[];
 const err=e=>{if(e){alert('Error: '+e.message);return true}};
 const cname=id=>(S.clientes.find(x=>x.id===id)||{}).nombre||'?';
 const pname=id=>(S.productos.find(x=>x.id===id)||{}).nombre||'?';
-const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ')+(o.notas?' — "'+o.notas+'"':'');
+const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ')+(o.tipo==='retiro'?' · Retira: '+(o.retira||'')+' · Pago: '+(o.forma_pago||''):'')+(o.notas?' — "'+o.notas+'"':'');
 const cs=id=>{const P=S.pedidos.filter(o=>o.cliente_id===id);return{n:P.length,t:P.reduce((s,o)=>s+Number(o.total),0)}};
 
 async function boot(){const{data}=await SB.auth.getSession();data.session?load():showLogin()}
 function showLogin(){$('nav').innerHTML='';$('#out').style.display='none';$('#emp').textContent='';
-$('#app').innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><h2>Ingresar</h2><label>Email</label><input id="l_e" type="email"><label>Password</label><input id="l_p" type="password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Ingresar</button></div>`}
+$('#app').innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><div style="text-align:center;margin-bottom:8px"><span class="mark">${LOGO(90)}</span><div class="brand" style="font-size:30px">FoodSuite <b>AI</b></div></div><h2>Ingresar</h2><label>Email</label><input id="l_e" type="email"><label>Password</label><input id="l_p" type="password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Ingresar</button></div>`}
 async function login(){const{error}=await SB.auth.signInWithPassword({email:$('#l_e').value.trim(),password:$('#l_p').value});if(err(error))return;load()}
 async function logout(){await SB.auth.signOut();showLogin()}
 async function load(){
 const{data:{user}}=await SB.auth.getUser();
-const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro)').eq('id',user.id).single();
+const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro,ciudad)').eq('id',user.id).single();
 if(e1||!me){alert('Tu usuario no está vinculado a ninguna empresa.');return logout()}
-S.eid=me.empresa_id;S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(me.empresas?.nombre||'');
-const[c,p,o,ct]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false}),SB.from('categorias').select('*').order('orden').order('nombre')]);
-if(err(c.error||p.error||o.error||ct.error))return;
-S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;$('#out').style.display='';render()}
+S.eid=me.empresa_id;S.nombre=me.empresas?.nombre||'';S.ciudad=me.empresas?.ciudad||'';S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(S.nombre||'Gastronómico');document.title=(S.nombre||'Gastronómico')+' · FoodSuite AI';
+const[c,p,o,ct,rv]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false}),SB.from('categorias').select('*').order('orden').order('nombre'),SB.from('reservas').select('*').order('fecha').order('hora')]);
+if(err(c.error||p.error||o.error||ct.error||rv.error))return;
+S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;S.reservas=rv.data;$('#out').style.display='';render()}
 function go(v){view=v;render()}
 function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]();if(view==='qr')drawQR()}
 
@@ -80,9 +83,9 @@ ${S.clientes.map(c=>{const s=cs(c.id);return `<tr><td>${esc(c.nombre)}</td><td>$
 productos(){return `<h2>Productos <button class="btn" onclick="edit('productos')">+ Nuevo</button></h2><div class="card scroll"><table><tr><th></th><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr>
 ${S.productos.map(p=>`<tr><td>${p.imagen_url?`<img src="${esc(p.imagen_url)}" width="44" height="44" style="object-fit:cover;border-radius:8px">`:''}</td><td>${esc(p.nombre)}</td><td>${esc(catn(p.categoria_id))}</td><td>${money(p.precio)}</td><td><button class="btn g" onclick="edit('productos','${p.id}')">Editar</button> <button class="btn g" onclick="del('productos','${p.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 pedidos(){return `<h2>Pedidos <button class="btn" onclick="newPed()">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>#</th><th>Cliente</th><th>Detalle</th><th>Entrega</th><th>Total</th><th>Estado</th><th></th></tr>
-${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(cname(o.cliente_id))}</td><td>${esc(itxt(o))}</td><td>${o.fecha_entrega||''}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td><button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
+${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(quien(o))}</td><td>${esc(itxt(o))}</td><td>${fh(o)}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td><button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 kanban(){return `<h2>Producción</h2><div class="kan">${ST.map(([k,l])=>`<div class="col" ondragover="event.preventDefault()" ondrop="drop(event,'${k}')"><h3>${l}</h3>
-${S.pedidos.filter(o=>o.estado===k).map(o=>`<div class="k" draggable="true" ondragstart="event.dataTransfer.setData('t','${o.id}')"><b>#${o.numero} ${esc(cname(o.cliente_id))}</b><br>${esc(itxt(o))}<br><span class="mu">${o.fecha_entrega||''} · ${money(o.total)}</span><br><button class="btn g" onclick="mv('${o.id}',-1)">◀</button> <button class="btn g" onclick="mv('${o.id}',1)">▶</button></div>`).join('')}</div>`).join('')}</div>`}
+${S.pedidos.filter(o=>o.estado===k).map(o=>`<div class="k" draggable="true" ondragstart="event.dataTransfer.setData('t','${o.id}')"><b>#${o.numero} ${esc(quien(o))}</b><br>${esc(itxt(o))}<br><span class="mu">${fh(o)} · ${money(o.total)}</span><br><button class="btn g" onclick="mv('${o.id}',-1)">◀</button> <button class="btn g" onclick="mv('${o.id}',1)">▶</button></div>`).join('')}</div>`).join('')}</div>`}
 };
 
 let cal=new Date(),selDay=null,wa={cid:null,conv:null,msgs:[]};
@@ -93,7 +96,7 @@ for(let i=0;i<first;i++)h+='<div></div>';
 for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,c=S.pedidos.filter(o=>o.fecha_entrega===ds).length;
 h+=`<div class="d" onclick="selDay='${ds}';render()"><b>${d}</b>${c?`<i>${c} pedido${c>1?'s':''}</i>`:''}</div>`}
 h+='</div>';
-if(selDay){const L=S.pedidos.filter(o=>o.fecha_entrega===selDay);h+=`<div class="card" style="margin-top:10px"><b>${selDay}</b>${L.map(o=>`<div>#${o.numero} ${esc(cname(o.cliente_id))} · ${esc(itxt(o))} · ${lab(o.estado)}</div>`).join('')||'<div class="mu">Sin pedidos</div>'}</div>`}
+if(selDay){const L=S.pedidos.filter(o=>o.fecha_entrega===selDay);h+=`<div class="card" style="margin-top:10px"><b>${selDay}</b>${L.map(o=>`<div>#${o.numero} ${esc(quien(o))} · ${esc(itxt(o))} · ${lab(o.estado)}</div>`).join('')||'<div class="mu">Sin pedidos</div>'}</div>`}
 return h};
 function cm(d){cal=new Date(cal.getFullYear(),cal.getMonth()+d,1);render()}
 V.whatsapp=()=>{const c=S.clientes.find(x=>x.id===wa.cid);
@@ -119,9 +122,18 @@ async function movCat(i,d){const a=S.categorias[i],b=S.categorias[i+d];if(!a||!b
 async function delCat(id){if(!confirm('¿Eliminar la categoría? Los productos quedan sin categoría.'))return;const{error}=await SB.from('categorias').delete().eq('id',id);if(err(error))return;load()}
 let mesas=0;
 const urlBase=()=>new URL('pedir.html',location.href).href+'?e='+encodeURIComponent(S.slug);
-V.qr=()=>`<h2>QR del local</h2><div class="card"><p>Imprimí el QR y ponelo en el mostrador o en las mesas. El cliente lo escanea con la cámara del celular y ve tu catálogo por categorías.</p><div class="qrs"><div class="qrc"><div id="qr0"></div><b>Catálogo general</b><small class="mu">${esc(urlBase())}</small></div></div>
-<label>Cantidad de mesas (opcional: un QR por mesa)</label><input type="number" min="0" max="60" value="${mesas}" onchange="mesas=Math.min(60,Math.max(0,+this.value||0));render()"><div class="qrs">${Array.from({length:mesas},(_,i)=>`<div class="qrc"><div id="qr${i+1}"></div><b>Mesa ${i+1}</b></div>`).join('')}</div><button class="btn g" onclick="window.print()">Imprimir</button></div>`;
+V.qr=()=>`<h2>QR del local</h2><div class="card"><p>El <b>QR de cada mesa</b> es para pedir en el local: el cliente escanea, elige y solicita, sin cargar datos, y el pedido llega con el número de mesa. El <b>QR general</b> es para redes, WhatsApp o mostrador: desde ahí también pueden reservar mesa o pedir para retirar.</p><div class="qrs"><div class="qrc"><div id="qr0"></div><b>General (reservas y retiro)</b><small class="mu">${esc(urlBase())}</small></div></div>
+<label>Cantidad de mesas (un QR por mesa, para pedir en el local)</label><input type="number" min="0" max="60" value="${mesas}" onchange="mesas=Math.min(60,Math.max(0,+this.value||0));render()"><div class="qrs">${Array.from({length:mesas},(_,i)=>`<div class="qrc"><div id="qr${i+1}"></div><b>Mesa ${i+1}</b></div>`).join('')}</div><button class="btn g" onclick="window.print()">Imprimir</button></div>`;
 function drawQR(){for(let i=0;i<=mesas;i++){const q=qrcode(0,'M');q.addData(i?urlBase()+'&m='+i:urlBase());q.make();$('#qr'+i).innerHTML=q.createImgTag(4,2)}}
+const quien=o=>o.tipo==='mesa'?'Mesa '+o.mesa:cname(o.cliente_id);
+const fh=o=>(o.fecha_entrega||'')+(o.hora?' '+o.hora.slice(0,5):'');
+V.reservas=()=>`<h2>Reservas de mesa</h2><div class="card scroll"><table><tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Cliente</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th></th></tr>${S.reservas.map(r=>{const c=S.clientes.find(x=>x.id===r.cliente_id)||{};return `<tr><td>${r.fecha}</td><td>${(r.hora||'').slice(0,5)}</td><td>${r.personas}</td><td>${esc(c.nombre)}</td><td>${esc(c.telefono)}</td><td>${esc(r.notas)}</td><td>${r.estado}</td><td><button class="btn g" onclick="resEst('${r.id}','confirmada')">Confirmar</button> <button class="btn g" onclick="resEst('${r.id}','cancelada')">Cancelar</button> <button class="btn g" onclick="del('reservas','${r.id}')">✕</button></td></tr>`}).join('')||'<tr><td class="mu">Todavía no hay reservas</td></tr>'}</table></div>`;
+async function resEst(id,e){const{error}=await SB.from('reservas').update({estado:e}).eq('id',id);if(err(error))return;load()}
+const MARK=`<g transform="rotate(-22 92 62)"><rect x="85" y="22" width="14" height="22" rx="4"/><rect x="89" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="93" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="90.5" y="42" width="3" height="40" rx="1.5"/></g><g transform="rotate(22 168 62)"><ellipse cx="168" cy="32" rx="8" ry="12"/><rect x="166.5" y="42" width="3" height="40" rx="1.5"/></g><circle cx="112" cy="30" r="13"/><circle cx="130" cy="24" r="15"/><circle cx="148" cy="30" r="13"/><rect x="108" y="30" width="44" height="18" rx="3"/><rect x="108" y="41" width="44" height="2.5" fill="var(--bg)"/><ellipse cx="130" cy="64" rx="20" ry="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="122" cy="60" r="2.6"/><circle cx="138" cy="60" r="2.6"/><path d="M130 69C124 66 116 68 113 72C117 72 120 75 125 73C127 72.5 129 71.5 130 71C131 71.5 133 72.5 135 73C140 75 143 72 147 72C144 68 136 66 130 69Z"/>`;
+const LOGO=w=>`<svg width="${w}" height="${Math.round(w*.75)}" viewBox="70 10 120 90" fill="currentColor" xmlns="http://www.w3.org/2000/svg">${MARK}</svg>`;
+const RUBROS=['Panadería','Pastelería','Cafetería','Restaurante','Rotisería','Heladería','Otro'];
+V.negocio=()=>`<h2>Mi negocio</h2><div class="card" style="max-width:460px"><label>Nombre del local (se muestra arriba en la app y en el catálogo)</label><input id="n_n" value="${esc(S.nombre)}" placeholder="Ej: Panadería La Espiga"><label>Rubro</label><select id="n_r">${[...new Set([S.rubro,...RUBROS].filter(Boolean))].map(r=>`<option ${S.rubro===r?'selected':''}>${esc(r)}</option>`).join('')}</select><label>Ciudad</label><input id="n_c" value="${esc(S.ciudad)}"><button class="btn" onclick="svNeg()">Guardar</button><p class="mu">Dirección de tu catálogo: <b>${esc(urlBase())}</b><br>La parte final (<b>${esc(S.slug)}</b>) no se cambia para no romper los QR impresos.</p></div>`;
+async function svNeg(){const{error}=await SB.from('empresas').update({nombre:$('#n_n').value.trim()||'Gastronómico',rubro:$('#n_r').value,ciudad:$('#n_c').value.trim()||null}).eq('id',S.eid);if(err(error))return;load()}
 function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
 $('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}${k==='productos'?'<label>Categoría</label><select id="f_cat"><option value="">Sin categoría</option>'+S.categorias.map(c=>`<option value="${c.id}" ${r.categoria_id===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')+'</select><label>Foto</label><input id="f_img" type="file" accept="image/*">':''}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
 async function upImg(file){const bm=await createImageBitmap(file),sc=Math.min(1,800/Math.max(bm.width,bm.height)),cv=document.createElement('canvas');cv.width=Math.round(bm.width*sc);cv.height=Math.round(bm.height*sc);cv.getContext('2d').drawImage(bm,0,0,cv.width,cv.height);
@@ -155,7 +167,7 @@ $('#dlg').close();load()}
 async function setEst(id,e){const{error}=await SB.from('pedidos').update({estado:e}).eq('id',id);if(err(error))return;load()}
 function mv(id,d){const o=S.pedidos.find(x=>x.id===id),i=ST.findIndex(x=>x[0]===o.estado)+d;if(i>=0&&i<ST.length)setEst(id,ST[i][0])}
 function drop(e,k){e.preventDefault();const id=e.dataTransfer.getData('t');if(id)setEst(id,k)}
-boot();
+$('#logo').innerHTML=LOGO(44);boot();
 </script>
 </body>
 </html>
