@@ -11,23 +11,25 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:80px}
 main{max-width:900px;margin:auto;padding:16px}h1{font-size:24px;margin:8px 0 6px}h2{font-size:18px;margin:0 0 10px}h2.ct{margin:18px 0 8px}
 .mesa{display:inline-block;background:var(--ac);color:#fff;border-radius:20px;padding:3px 12px;font-size:14px;margin-bottom:8px}
+.hid{display:none;font-size:12px;color:var(--mu);text-decoration:underline;cursor:pointer;margin:0 0 6px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:6px 0 4px;position:sticky;top:0;background:var(--bg);z-index:2}
 .chip{white-space:nowrap;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:7px 14px;border-radius:20px;cursor:pointer;font:inherit}.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
 .pc{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .pc img,.ph{width:100%;aspect-ratio:1/1;object-fit:cover;display:block}.ph{display:flex;align-items:center;justify-content:center;font-size:48px;background:var(--bg)}
 .in{padding:10px;display:flex;flex-direction:column;gap:4px;flex:1}.in p{margin:0;font-size:13px;flex:1}.mu{color:var(--mu)}
-.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .btn{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer;width:100%;font-size:15px;margin-top:6px}.btn.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}.btn.s{width:auto;padding:6px 10px;margin:0}.btn:disabled{opacity:.6}
 .q{display:flex;align-items:center;gap:6px}.q button,.mini{width:28px;height:28px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);border-radius:8px;cursor:pointer}
 .bar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--bd);z-index:3}.bar .btn{max-width:600px;display:block;margin:auto}
-label{font-size:13px;color:var(--mu)}input{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;margin:3px 0 10px}
+label{font-size:13px;color:var(--mu)}input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;margin:3px 0 10px}
 dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);color:var(--tx);width:min(440px,94vw);max-height:92vh}
 .ok{color:#1f8a4c;font-weight:600}.er{color:#c0392b}.hp{position:absolute;left:-9999px}
+a.btn{display:block;text-align:center;text-decoration:none}
 </style>
 </head>
 <body>
-<main><h1 id="tit">Catálogo</h1><div id="mesa"></div><p id="vacio" class="mu"></p><div class="chips" id="chips"></div><div id="grid"></div></main>
+<main><h1 id="tit">Catálogo</h1><div id="mesa"></div><a class="hid" id="rem" onclick="openRemote()">¿No estás en el local? Reservá una mesa o pedí para retirar</a><p id="vacio" class="mu"></p><div class="chips" id="chips"></div><div id="grid"></div></main>
 <div class="bar" id="bar" style="display:none"><button class="btn" id="bt" onclick="openCart()"></button></div>
 <dialog id="dlg"><div id="cb"></div></dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -36,10 +38,15 @@ const SB=window.supabase.createClient('https://gxlcfutcmmjfstnawxyt.supabase.co'
 const $=s=>document.querySelector(s),Q=new URLSearchParams(location.search),slug=Q.get('e')||'',mesa=(Q.get('m')||'').replace(/[^0-9A-Za-z]/g,'').slice(0,6);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
-const today=()=>new Date().toISOString().slice(0,10);
-let P=[],C={},CATS=[],cat='';
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const PAGOS=['Efectivo','Transferencia','Tarjeta','Mercado Pago'];
+let P=[],C={},CATS=[],cat='',INFO={reserva_mesa:true,sena_pct:50};
+const fmtF=d=>d?d.split('-').reverse().join('/'):'';
+const wa=(tel,texto)=>tel?`<a class="btn g" target="_blank" rel="noopener" href="https://wa.me/${String(tel).replace(/\D/g,'')}?text=${encodeURIComponent(texto)}">Escribir al local por WhatsApp</a>`:'';
+SB.rpc('info_publica',{p_slug:slug}).then(r=>{if(r.data)INFO=r.data});
 const cnt=()=>Object.values(C).reduce((a,b)=>a+b,0),tot=()=>P.reduce((s,p)=>s+(C[p.id]||0)*Number(p.precio),0);
-if(mesa)$('#mesa').innerHTML=`<span class="mesa">Mesa ${esc(mesa)}</span>`;
+const items=()=>Object.entries(C).map(([producto,cantidad])=>({producto,cantidad}));
+if(mesa)$('#mesa').innerHTML=`<span class="mesa">Mesa ${esc(mesa)}</span>`;else $('#rem').style.display='block';
 (async()=>{const{data,error}=await SB.rpc('catalogo_publico',{p_slug:slug});
 if(error||!data||!data.length){$('#vacio').textContent='Este negocio todavía no tiene productos cargados.';return}
 P=data;$('#tit').textContent=data[0].empresa;document.title=data[0].empresa;
@@ -52,24 +59,41 @@ const n=cnt();$('#bar').style.display=n?'':'none';$('#bt').textContent=`🛒 Ver
 function chg(id,d){C[id]=Math.max(0,Math.min(100,(C[id]||0)+d));if(!C[id])delete C[id];draw()}
 function chgC(id,d){chg(id,d);if(!cnt())return $('#dlg').close();cl()}
 function cl(){$('#cl').innerHTML=P.filter(p=>C[p.id]).map(p=>`<div class="row"><span>${C[p.id]}× ${esc(p.nombre)}</span><span>${money(C[p.id]*p.precio)} <button class="mini" onclick="chgC('${p.id}',-1)">−</button> <button class="mini" onclick="chgC('${p.id}',1)">+</button></span></div>`).join('')+`<div class="row"><b>Total</b><b>${money(tot())}</b></div>`}
-function openCart(){$('#cb').innerHTML=`<h2>Tu pedido${mesa?' · Mesa '+esc(mesa):''}</h2><div id="cl"></div><label>Tu nombre</label><input id="c_n" autocomplete="name"><label>Teléfono (WhatsApp)</label><input id="c_t" type="tel" autocomplete="tel">${mesa?'':'<label>Fecha de entrega</label><input id="c_f" type="date">'}<label>Notas (opcional)</label><input id="c_o" placeholder="Ej: sin nueces, mensaje en la torta"><input class="hp" id="c_h" tabindex="-1" autocomplete="off">
-<button class="btn" id="b1" onclick="finalizar()">${mesa?'Enviar pedido':'Finalizar pedido'}</button>${mesa?'':'<button class="btn g" id="b2" onclick="solicitar()">Solicitar presupuesto</button>'}<p id="cm"></p><button class="btn g" onclick="$('#dlg').close()">Seguir viendo</button>`;
-if(!mesa)$('#c_f').min=$('#c_f').value=today();cl();$('#dlg').showModal()}
+const show=h=>{$('#cb').innerHTML=h;if(!$('#dlg').open)$('#dlg').showModal()};
 const msg=(t,ok)=>{$('#cm').className=ok?'ok':'er';$('#cm').textContent=t};
-const fin=t=>{C={};draw();$('#cb').innerHTML=`<h2>¡Listo!</h2><p class="ok">${t}</p><button class="btn" onclick="$('#dlg').close()">Cerrar</button>`};
-const fecha=()=>mesa?today():($('#c_f').value||null);
-const notas=()=>(mesa?'Mesa '+mesa+(($('#c_o').value.trim())?'. ':''):'')+$('#c_o').value.trim();
-async function finalizar(){if($('#c_h').value)return;const b=$('#b1');b.disabled=true;
-const items=Object.entries(C).map(([producto,cantidad])=>({producto,cantidad}));
-const{data,error}=await SB.rpc('crear_pedido_carrito',{p_slug:slug,p_nombre:$('#c_n').value,p_telefono:$('#c_t').value,p_items:items,p_fecha:fecha(),p_notas:notas()});
+const hp='<input class="hp" id="c_h" tabindex="-1" autocomplete="off">';
+const fin=(t,clear)=>{if(clear){C={};draw()}show(`<h2>¡Listo!</h2><p class="ok">${t}</p><button class="btn" onclick="$('#dlg').close()">Cerrar</button>`)};
+const datos='<label>Tu nombre</label><input id="c_n" autocomplete="name"><label>Teléfono (WhatsApp)</label><input id="c_t" type="tel" autocomplete="tel">';
+const cuando=(a,b)=>`<div class="two"><div><label>${a}</label><input id="c_f" type="date"></div><div><label>${b}</label><input id="c_hr" type="time"></div></div>`;
+const botonera=(txt,fn)=>`${hp}<button class="btn" id="b1" onclick="${fn}()">${txt}</button><p id="cm"></p><button class="btn g" onclick="$('#dlg').close()">Seguir viendo</button>`;
+
+/* En el local (QR de mesa): sin pedir datos */
+const openCart=()=>mesa?pedidoMesa():retiroForm();
+function pedidoMesa(){show(`<h2>Tu pedido · Mesa ${esc(mesa)}</h2><div id="cl"></div><label>Notas (opcional)</label><input id="c_o" placeholder="Ej: sin hielo, sin cebolla">${botonera('Solicitar pedido','enviarMesa')}`);cl()}
+async function enviarMesa(){if($('#c_h').value)return;const b=$('#b1');b.disabled=true;
+const{data,error}=await SB.rpc('crear_pedido_mesa',{p_slug:slug,p_mesa:mesa,p_items:items(),p_notas:$('#c_o').value});
 b.disabled=false;if(error)return msg('No se pudo enviar: '+error.message,0);
-fin(mesa?`Tu pedido #${data} fue enviado. ¡Gracias!`:`Tu pedido #${data} fue recibido. Te contactamos por WhatsApp para confirmarlo.`)}
-async function solicitar(){if($('#c_h').value)return;const b=$('#b2');b.disabled=true;
-const lista=P.filter(p=>C[p.id]).map(p=>C[p.id]+'× '+p.nombre).join(', '),nota=$('#c_o').value.trim(),f=$('#c_f').value;
-const texto='Quiero consultar: '+lista+(f?'. Para el '+f:'')+(nota?'. Nota: '+nota:'');
-const{error}=await SB.rpc('solicitar_presupuesto',{p_slug:slug,p_nombre:$('#c_n').value,p_telefono:$('#c_t').value,p_email:'',p_mensaje:texto});
+fin(`Tu pedido #${data} fue enviado a la cocina. ¡Gracias!`,1)}
+
+/* Fuera del local: reservar pedido para retirar o reservar mesa */
+function openRemote(){show(`<h2>Reservas y retiro</h2><p class="mu">Para quienes no están en el local.</p><button class="btn" onclick="retiroForm()">🛍️ Pedido para retirar</button>${INFO.reserva_mesa?'<button class="btn g" onclick="reservaForm()">🪑 Reservar una mesa</button>':''}<button class="btn g" onclick="$('#dlg').close()">Cerrar</button>`)}
+function retiroForm(){if(!cnt())return show(`<h2>Pedido para retirar</h2><p>Primero elegí productos del catálogo y tocá <b>Ver pedido</b>.</p><button class="btn" onclick="$('#dlg').close()">Ir al catálogo</button>`);
+show(`<h2>Pedido para retirar</h2><div id="cl"></div>${INFO.sena_pct>0?`<p class="mu">Para confirmar la reserva se pide una seña del ${INFO.sena_pct}% del total.</p>`:''}${datos}${cuando('Día de retiro','Hora')}<label>¿Quién retira? (si sos vos, dejalo vacío)</label><input id="c_r"><label>Forma de pago</label><select id="c_p">${PAGOS.map(x=>`<option>${x}</option>`).join('')}</select><label>Notas (opcional)</label><input id="c_o" placeholder="Ej: sin nueces, mensaje en la torta">${botonera('Reservar pedido','enviarRetiro')}`);
+$('#c_f').min=$('#c_f').value=today();cl()}
+async function enviarRetiro(){if($('#c_h').value)return;const b=$('#b1');b.disabled=true;
+const{data,error}=await SB.rpc('crear_pedido_retiro',{p_slug:slug,p_nombre:$('#c_n').value,p_telefono:$('#c_t').value,p_items:items(),p_fecha:$('#c_f').value||null,p_hora:$('#c_hr').value||null,p_forma_pago:$('#c_p').value,p_retira:$('#c_r').value,p_notas:$('#c_o').value});
 b.disabled=false;if(error)return msg('No se pudo enviar: '+error.message,0);
-fin('Recibimos tu solicitud. Te respondemos por WhatsApp con el presupuesto.')}
+const f=fmtF($('#c_f').value),h=$('#c_hr').value;let t=`Tu pedido #${data.numero} quedó reservado para el ${f} a las ${h}. Total: ${money(data.total)}.`;
+if(Number(data.sena)>0)t+=`<br><br>Para confirmar la reserva necesitamos una <b>seña de ${money(data.sena)}</b>${data.alias_pago?` (transferí al alias <b>${esc(data.alias_pago)}</b>)`:''} y que nos mandes el comprobante.`;
+t+=`<br><br>El local te va a escribir por WhatsApp para confirmar.`+wa(data.telefono,`Hola! Hice el pedido #${data.numero} para el ${f} a las ${h}.${Number(data.sena)>0?' Te mando el comprobante de la seña.':''}`);
+fin(t,1)}
+function reservaForm(){show(`<h2>Reservar una mesa</h2>${datos}${cuando('Día','Hora')}<label>Cantidad de personas</label><input id="c_pe" type="number" min="1" max="50" value="2"><label>Notas (opcional)</label><input id="c_o" placeholder="Ej: cumpleaños, silla de bebé">${botonera('Reservar mesa','enviarReserva')}`);
+$('#c_f').min=$('#c_f').value=today()}
+async function enviarReserva(){if($('#c_h').value)return;const b=$('#b1');b.disabled=true;
+const{data,error}=await SB.rpc('reservar_mesa',{p_slug:slug,p_nombre:$('#c_n').value,p_telefono:$('#c_t').value,p_fecha:$('#c_f').value||null,p_hora:$('#c_hr').value||null,p_personas:+$('#c_pe').value,p_notas:$('#c_o').value});
+b.disabled=false;if(error)return msg('No se pudo enviar: '+error.message,0);
+const f=fmtF($('#c_f').value),h=$('#c_hr').value,n=$('#c_pe').value;
+fin(`Recibimos tu reserva de mesa para ${n} persona${n>1?'s':''} el ${f} a las ${h}. El local te va a escribir por WhatsApp para confirmarla.`+wa(data&&data.telefono,`Hola! Reservé una mesa para ${n} el ${f} a las ${h}.`),0)}
 </script>
 </body>
 </html>
