@@ -30,6 +30,7 @@ dialog{border:1px solid var(--bd);border-radius:14px;background:var(--card);colo
 @media print{header,nav,.btn,label,input,.card>p{display:none!important}.qrc{break-inside:avoid}}
 .mark,.brand{color:#7a4b22}.mark{display:inline-flex}.brand{font-family:Pacifico,"Brush Script MT","Segoe Script",cursive;font-weight:400;font-size:24px;line-height:1}.brand b{color:var(--ac);font-weight:400}
 @media (prefers-color-scheme:dark){.mark,.brand{color:#e8c9a0}}
+a.btn{text-decoration:none;display:inline-block}
 </style>
 </head>
 <body>
@@ -55,22 +56,22 @@ let S={clientes:[],productos:[],pedidos:[],categorias:[],reservas:[]},view='dash
 const err=e=>{if(e){alert('Error: '+e.message);return true}};
 const cname=id=>(S.clientes.find(x=>x.id===id)||{}).nombre||'?';
 const pname=id=>(S.productos.find(x=>x.id===id)||{}).nombre||'?';
-const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ')+(o.tipo==='retiro'?' · Retira: '+(o.retira||'')+' · Pago: '+(o.forma_pago||''):'')+(o.notas?' — "'+o.notas+'"':'');
+const itxt=o=>(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ')+(o.tipo==='retiro'?' · Retira: '+(o.retira||'')+' · Pago: '+(o.forma_pago||''):'')+(Number(o.sena)>0?' · Seña '+money(o.sena)+(o.sena_pagada?' ✓':' (pendiente)'):'')+(o.notas?' — "'+o.notas+'"':'');
 const cs=id=>{const P=S.pedidos.filter(o=>o.cliente_id===id);return{n:P.length,t:P.reduce((s,o)=>s+Number(o.total),0)}};
 
 async function boot(){const{data}=await SB.auth.getSession();data.session?load():showLogin()}
 function showLogin(){$('nav').innerHTML='';$('#out').style.display='none';$('#emp').textContent='';
 $('#app').innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><div style="text-align:center;margin-bottom:8px"><span class="mark">${LOGO(90)}</span><div class="brand" style="font-size:30px">FoodSuite <b>AI</b></div></div><h2>Ingresar</h2><label>Email</label><input id="l_e" type="email"><label>Password</label><input id="l_p" type="password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Ingresar</button></div>`}
 async function login(){const{error}=await SB.auth.signInWithPassword({email:$('#l_e').value.trim(),password:$('#l_p').value});if(err(error))return;load()}
-async function logout(){await SB.auth.signOut();showLogin()}
+async function logout(){clearInterval(window._poll);window._poll=null;known=null;S.eid=null;await SB.auth.signOut();showLogin()}
 async function load(){
 const{data:{user}}=await SB.auth.getUser();
-const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro,ciudad)').eq('id',user.id).single();
+const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro,ciudad,telefono,alias_pago,sena_pct,reserva_mesa)').eq('id',user.id).single();
 if(e1||!me){alert('Tu usuario no está vinculado a ninguna empresa.');return logout()}
-S.eid=me.empresa_id;S.nombre=me.empresas?.nombre||'';S.ciudad=me.empresas?.ciudad||'';S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(S.nombre||'Gastronómico');document.title=(S.nombre||'Gastronómico')+' · FoodSuite AI';
+S.eid=me.empresa_id;S.nombre=me.empresas?.nombre||'';S.ciudad=me.empresas?.ciudad||'';S.telefono=me.empresas?.telefono||'';S.alias=me.empresas?.alias_pago||'';S.sena=me.empresas?.sena_pct??50;S.rm=me.empresas?.reserva_mesa!==false;S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(S.nombre||'Gastronómico');document.title=(S.nombre||'Gastronómico')+' · FoodSuite AI';
 const[c,p,o,ct,rv]=await Promise.all([SB.from('clientes').select('*').order('nombre'),SB.from('productos').select('*').order('nombre'),SB.from('pedidos').select('*,pedido_detalle(*)').order('numero',{ascending:false}),SB.from('categorias').select('*').order('orden').order('nombre'),SB.from('reservas').select('*').order('fecha').order('hora')]);
 if(err(c.error||p.error||o.error||ct.error||rv.error))return;
-S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;S.reservas=rv.data;$('#out').style.display='';render()}
+S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;S.reservas=rv.data;$('#out').style.display='';render();if(!window._poll){window._poll=setInterval(chequear,20000);chequear()}}
 function go(v){view=v;render()}
 function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]();if(view==='qr')drawQR()}
 
@@ -83,20 +84,20 @@ ${S.clientes.map(c=>{const s=cs(c.id);return `<tr><td>${esc(c.nombre)}</td><td>$
 productos(){return `<h2>Productos <button class="btn" onclick="edit('productos')">+ Nuevo</button></h2><div class="card scroll"><table><tr><th></th><th>Nombre</th><th>Categoría</th><th>Precio</th><th></th></tr>
 ${S.productos.map(p=>`<tr><td>${p.imagen_url?`<img src="${esc(p.imagen_url)}" width="44" height="44" style="object-fit:cover;border-radius:8px">`:''}</td><td>${esc(p.nombre)}</td><td>${esc(catn(p.categoria_id))}</td><td>${money(p.precio)}</td><td><button class="btn g" onclick="edit('productos','${p.id}')">Editar</button> <button class="btn g" onclick="del('productos','${p.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 pedidos(){return `<h2>Pedidos <button class="btn" onclick="newPed()">+ Nuevo</button></h2><div class="card scroll"><table><tr><th>#</th><th>Cliente</th><th>Detalle</th><th>Entrega</th><th>Total</th><th>Estado</th><th></th></tr>
-${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(quien(o))}</td><td>${esc(itxt(o))}</td><td>${fh(o)}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td><button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
+${S.pedidos.map(o=>`<tr><td>#${o.numero}</td><td>${esc(quien(o))}</td><td>${esc(itxt(o))}</td><td>${fh(o)}</td><td>${money(o.total)}</td><td>${lab(o.estado)}</td><td>${o.tipo==='retiro'?`<a class="btn g" target="_blank" rel="noopener" href="${waPed(o)}">WhatsApp</a> ${Number(o.sena)>0?`<button class="btn g" onclick="senaOk('${o.id}',${!o.sena_pagada})">${o.sena_pagada?'Seña ✓':'Marcar seña'}</button> `:''}`:''}<button class="btn g" onclick="del('pedidos','${o.id}')">✕</button></td></tr>`).join('')}</table></div>`},
 kanban(){return `<h2>Producción</h2><div class="kan">${ST.map(([k,l])=>`<div class="col" ondragover="event.preventDefault()" ondrop="drop(event,'${k}')"><h3>${l}</h3>
 ${S.pedidos.filter(o=>o.estado===k).map(o=>`<div class="k" draggable="true" ondragstart="event.dataTransfer.setData('t','${o.id}')"><b>#${o.numero} ${esc(quien(o))}</b><br>${esc(itxt(o))}<br><span class="mu">${fh(o)} · ${money(o.total)}</span><br><button class="btn g" onclick="mv('${o.id}',-1)">◀</button> <button class="btn g" onclick="mv('${o.id}',1)">▶</button></div>`).join('')}</div>`).join('')}</div>`}
 };
 
 let cal=new Date(),selDay=null,wa={cid:null,conv:null,msgs:[]};
 V.calendario=()=>{const y=cal.getFullYear(),m=cal.getMonth(),first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
-let h=`<h2><button class="btn g" onclick="cm(-1)">◀</button> ${cal.toLocaleDateString('es-AR',{month:'long',year:'numeric'})} <button class="btn g" onclick="cm(1)">▶</button></h2><div class="cal">`;
+let h=`<p class="mu">● = pedidos para retirar y reservas de mesa del día (tocá un día para ver el detalle)</p><h2><button class="btn g" onclick="cm(-1)">◀</button> ${cal.toLocaleDateString('es-AR',{month:'long',year:'numeric'})} <button class="btn g" onclick="cm(1)">▶</button></h2><div class="cal">`;
 ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].forEach(d=>h+=`<div class="mu">${d}</div>`);
 for(let i=0;i<first;i++)h+='<div></div>';
-for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,c=S.pedidos.filter(o=>o.fecha_entrega===ds).length;
-h+=`<div class="d" onclick="selDay='${ds}';render()"><b>${d}</b>${c?`<i>${c} pedido${c>1?'s':''}</i>`:''}</div>`}
+for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,c=S.pedidos.filter(o=>o.fecha_entrega===ds&&o.tipo!=='mesa').length+S.reservas.filter(r=>r.fecha===ds&&r.estado!=='cancelada').length;
+h+=`<div class="d" onclick="selDay='${ds}';render()"><b>${d}</b>${c?`<i>● ${c}</i>`:''}</div>`}
 h+='</div>';
-if(selDay){const L=S.pedidos.filter(o=>o.fecha_entrega===selDay);h+=`<div class="card" style="margin-top:10px"><b>${selDay}</b>${L.map(o=>`<div>#${o.numero} ${esc(quien(o))} · ${esc(itxt(o))} · ${lab(o.estado)}</div>`).join('')||'<div class="mu">Sin pedidos</div>'}</div>`}
+if(selDay){const L=S.pedidos.filter(o=>o.fecha_entrega===selDay&&o.tipo!=='mesa'),R=S.reservas.filter(r=>r.fecha===selDay&&r.estado!=='cancelada');h+=`<div class="card" style="margin-top:10px"><b>${fmt(selDay)}</b>${L.map(o=>`<div>🛍️ ${(o.hora||'').slice(0,5)} #${o.numero} ${esc(quien(o))} · ${esc(itxt(o))} · ${lab(o.estado)}</div>`).join('')}${R.map(r=>`<div>🪑 ${(r.hora||'').slice(0,5)} ${esc(resNom(r))} · ${r.personas} persona${r.personas>1?'s':''} · ${r.estado}</div>`).join('')}${L.length+R.length?'':'<div class="mu">Sin pedidos ni reservas</div>'}</div>`}
 return h};
 function cm(d){cal=new Date(cal.getFullYear(),cal.getMonth()+d,1);render()}
 V.whatsapp=()=>{const c=S.clientes.find(x=>x.id===wa.cid);
@@ -127,13 +128,33 @@ V.qr=()=>`<h2>QR del local</h2><div class="card"><p>El <b>QR de cada mesa</b> es
 function drawQR(){for(let i=0;i<=mesas;i++){const q=qrcode(0,'M');q.addData(i?urlBase()+'&m='+i:urlBase());q.make();$('#qr'+i).innerHTML=q.createImgTag(4,2)}}
 const quien=o=>o.tipo==='mesa'?'Mesa '+o.mesa:cname(o.cliente_id);
 const fh=o=>(o.fecha_entrega||'')+(o.hora?' '+o.hora.slice(0,5):'');
-V.reservas=()=>`<h2>Reservas de mesa</h2><div class="card scroll"><table><tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Cliente</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th></th></tr>${S.reservas.map(r=>{const c=S.clientes.find(x=>x.id===r.cliente_id)||{};return `<tr><td>${r.fecha}</td><td>${(r.hora||'').slice(0,5)}</td><td>${r.personas}</td><td>${esc(c.nombre)}</td><td>${esc(c.telefono)}</td><td>${esc(r.notas)}</td><td>${r.estado}</td><td><button class="btn g" onclick="resEst('${r.id}','confirmada')">Confirmar</button> <button class="btn g" onclick="resEst('${r.id}','cancelada')">Cancelar</button> <button class="btn g" onclick="del('reservas','${r.id}')">✕</button></td></tr>`}).join('')||'<tr><td class="mu">Todavía no hay reservas</td></tr>'}</table></div>`;
+V.reservas=()=>`<h2>Reservas de mesa</h2><div class="card scroll"><table><tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Cliente</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th></th></tr>${S.reservas.map(r=>{const c=S.clientes.find(x=>x.id===r.cliente_id)||{};return `<tr><td>${r.fecha}</td><td>${(r.hora||'').slice(0,5)}</td><td>${r.personas}</td><td>${esc(c.nombre)}</td><td>${esc(c.telefono)}</td><td>${esc(r.notas)}</td><td>${r.estado}</td><td><a class="btn g" target="_blank" rel="noopener" href="${waRes(r)}">WhatsApp</a> <button class="btn g" onclick="resEst('${r.id}','confirmada')">Confirmar</button> <button class="btn g" onclick="resEst('${r.id}','cancelada')">Cancelar</button> <button class="btn g" onclick="del('reservas','${r.id}')">✕</button></td></tr>`}).join('')||'<tr><td class="mu">Todavía no hay reservas</td></tr>'}</table></div>`;
 async function resEst(id,e){const{error}=await SB.from('reservas').update({estado:e}).eq('id',id);if(err(error))return;load()}
 const MARK=`<g transform="rotate(-22 92 62)"><rect x="85" y="22" width="14" height="22" rx="4"/><rect x="89" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="93" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="90.5" y="42" width="3" height="40" rx="1.5"/></g><g transform="rotate(22 168 62)"><ellipse cx="168" cy="32" rx="8" ry="12"/><rect x="166.5" y="42" width="3" height="40" rx="1.5"/></g><circle cx="112" cy="30" r="13"/><circle cx="130" cy="24" r="15"/><circle cx="148" cy="30" r="13"/><rect x="108" y="30" width="44" height="18" rx="3"/><rect x="108" y="41" width="44" height="2.5" fill="var(--bg)"/><ellipse cx="130" cy="64" rx="20" ry="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="122" cy="60" r="2.6"/><circle cx="138" cy="60" r="2.6"/><path d="M130 69C124 66 116 68 113 72C117 72 120 75 125 73C127 72.5 129 71.5 130 71C131 71.5 133 72.5 135 73C140 75 143 72 147 72C144 68 136 66 130 69Z"/>`;
 const LOGO=w=>`<svg width="${w}" height="${Math.round(w*.75)}" viewBox="70 10 120 90" fill="currentColor" xmlns="http://www.w3.org/2000/svg">${MARK}</svg>`;
 const RUBROS=['Panadería','Pastelería','Cafetería','Restaurante','Rotisería','Heladería','Otro'];
-V.negocio=()=>`<h2>Mi negocio</h2><div class="card" style="max-width:460px"><label>Nombre del local (se muestra arriba en la app y en el catálogo)</label><input id="n_n" value="${esc(S.nombre)}" placeholder="Ej: Panadería La Espiga"><label>Rubro</label><select id="n_r">${[...new Set([S.rubro,...RUBROS].filter(Boolean))].map(r=>`<option ${S.rubro===r?'selected':''}>${esc(r)}</option>`).join('')}</select><label>Ciudad</label><input id="n_c" value="${esc(S.ciudad)}"><button class="btn" onclick="svNeg()">Guardar</button><p class="mu">Dirección de tu catálogo: <b>${esc(urlBase())}</b><br>La parte final (<b>${esc(S.slug)}</b>) no se cambia para no romper los QR impresos.</p></div>`;
-async function svNeg(){const{error}=await SB.from('empresas').update({nombre:$('#n_n').value.trim()||'Gastronómico',rubro:$('#n_r').value,ciudad:$('#n_c').value.trim()||null}).eq('id',S.eid);if(err(error))return;load()}
+V.negocio=()=>`<h2>Mi negocio</h2><div class="card" style="max-width:460px"><label>Nombre del local (se muestra arriba en la app y en el catálogo)</label><input id="n_n" value="${esc(S.nombre)}" placeholder="Ej: Panadería La Espiga"><label>Rubro</label><select id="n_r">${[...new Set([S.rubro,...RUBROS].filter(Boolean))].map(r=>`<option ${S.rubro===r?'selected':''}>${esc(r)}</option>`).join('')}</select><label>Ciudad</label><input id="n_c" value="${esc(S.ciudad)}"><label>WhatsApp del local (con código de país, sin + ni espacios. Ej: 5493874123456)</label><input id="n_tel" value="${esc(S.telefono)}"><label>Alias o CBU para recibir señas y pagos</label><input id="n_al" value="${esc(S.alias)}"><label>Seña para reservas de pedido (% del total, 0 = sin seña)</label><input id="n_se" type="number" min="0" max="100" value="${S.sena}"><label>¿Aceptás reservas de mesa?</label><select id="n_rm"><option ${S.rm?'selected':''}>Sí</option><option ${S.rm?'':'selected'}>No</option></select><button class="btn" onclick="svNeg()">Guardar</button><p class="mu">Dirección de tu catálogo: <b>${esc(urlBase())}</b><br>La parte final (<b>${esc(S.slug)}</b>) no se cambia para no romper los QR impresos.</p></div>`;
+async function svNeg(){const{error}=await SB.from('empresas').update({nombre:$('#n_n').value.trim()||'Gastronómico',rubro:$('#n_r').value,ciudad:$('#n_c').value.trim()||null,telefono:$('#n_tel').value.replace(/\D/g,'')||null,alias_pago:$('#n_al').value.trim()||null,sena_pct:Math.min(100,Math.max(0,+$('#n_se').value||0)),reserva_mesa:$('#n_rm').value==='Sí'}).eq('id',S.eid);if(err(error))return;load()}
+const fmt=d=>d?String(d).split('-').reverse().join('/'):'';
+const waNum=t=>{let d=String(t||'').replace(/\D/g,'').replace(/^0+/,'');if(d.startsWith('54'))return d.startsWith('549')?d:'549'+d.slice(2);return d.length===10?'549'+d:d};
+const resNom=r=>(S.clientes.find(x=>x.id===r.cliente_id)||{}).nombre||'?';
+const waPed=o=>{const c=S.clientes.find(x=>x.id===o.cliente_id)||{},it=(o.pedido_detalle||[]).map(i=>i.cantidad+'× '+pname(i.producto_id)).join(', ');
+const m=`Hola ${c.nombre||''}! Recibimos tu pedido #${o.numero} para el ${fmt(o.fecha_entrega)}${o.hora?' a las '+o.hora.slice(0,5):''}: ${it}. Total ${money(o.total)}.`+(Number(o.sena)>0?` Para confirmarlo necesitamos una seña de ${money(o.sena)}${S.alias?' (alias: '+S.alias+')':''}.`:'')+' ¿Seguís con la reserva?';
+return 'https://wa.me/'+waNum(c.telefono)+'?text='+encodeURIComponent(m)};
+const waRes=r=>{const c=S.clientes.find(x=>x.id===r.cliente_id)||{};
+const m=`Hola ${c.nombre||''}! Recibimos tu reserva de mesa para ${r.personas} persona${r.personas>1?'s':''} el ${fmt(r.fecha)} a las ${(r.hora||'').slice(0,5)} en ${S.nombre||'nuestro local'}. ¿Seguís con la reserva? Respondé SÍ para confirmarla.`;
+return 'https://wa.me/'+waNum(c.telefono)+'?text='+encodeURIComponent(m)};
+async function senaOk(id,v){const{error}=await SB.from('pedidos').update({sena_pagada:v}).eq('id',id);if(err(error))return;load()}
+let known=null,aud=null;
+document.addEventListener('click',()=>{try{aud=aud||new (window.AudioContext||window.webkitAudioContext)();aud.resume()}catch(e){}},{once:true});
+function beep(){try{if(!aud)return;const o=aud.createOscillator(),g=aud.createGain();o.connect(g);g.connect(aud.destination);o.frequency.value=880;g.gain.value=.2;o.start();o.stop(aud.currentTime+.3)}catch(e){}}
+function aviso(t){let b=$('#aviso');if(!b){b=document.createElement('div');b.id='aviso';b.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);background:var(--ac);color:#fff;padding:10px 16px;border-radius:10px;z-index:99;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)';b.onclick=()=>{b.remove()};document.body.appendChild(b)}b.textContent='🔔 '+t+' (tocá para cerrar)';beep()}
+async function chequear(){if(!S.eid)return;
+const[p,r]=await Promise.all([SB.from('pedidos').select('id,numero,tipo,mesa').order('creado_en',{ascending:false}).limit(10),SB.from('reservas').select('id').order('creado_en',{ascending:false}).limit(10)]);
+if(p.error||r.error)return;
+if(known){const np=p.data.filter(x=>!known.has('p'+x.id)),nr=r.data.filter(x=>!known.has('r'+x.id));
+if(np.length||nr.length){aviso([...np.map(x=>x.tipo==='mesa'?'Nuevo pedido · Mesa '+x.mesa:'Nuevo pedido #'+x.numero),...nr.map(()=>'Nueva reserva de mesa')].join(' · '));known=new Set([...known,...np.map(x=>'p'+x.id),...nr.map(x=>'r'+x.id)]);await load();return}}
+known=new Set([...(known||[]),...p.data.map(x=>'p'+x.id),...r.data.map(x=>'r'+x.id)])}
 function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
 $('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}${k==='productos'?'<label>Categoría</label><select id="f_cat"><option value="">Sin categoría</option>'+S.categorias.map(c=>`<option value="${c.id}" ${r.categoria_id===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')+'</select><label>Foto</label><input id="f_img" type="file" accept="image/*">':''}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
 async function upImg(file){const bm=await createImageBitmap(file),sc=Math.min(1,800/Math.max(bm.width,bm.height)),cv=document.createElement('canvas');cv.width=Math.round(bm.width*sc);cv.height=Math.round(bm.height*sc);cv.getContext('2d').drawImage(bm,0,0,cv.width,cv.height);
