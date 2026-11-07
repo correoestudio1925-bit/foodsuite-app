@@ -217,6 +217,7 @@ a=R.length?`<b>Reservas pendientes de confirmar:</b>${R.map(r=>`<div>🪑 ${fmt(
 else a='No entendí la pregunta. Probá con las sugeridas de arriba: mejor cliente, producto más vendido, ventas de la semana, clientes que no compran, señas pendientes o qué tenés para hoy.';
 $('#ans').innerHTML=a}
 async function cambiarPw(){const p=$('#pw1').value;if(p.length<8)return alert('La contraseña debe tener al menos 8 caracteres');const{error}=await SB.auth.updateUser({password:p});if(err(error))return;$('#pw1').value='';alert('Contraseña cambiada')}
+const FN_CREAR='smooth-action'; // nombre (slug) de la Edge Function que crea locales
 let ADM={rows:null,ult:null};
 const slugify=t=>nz(t).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
 async function cargarAdmin(){const{data,error}=await SB.rpc('admin_locales');if(err(error))return;ADM.rows=data;render()}
@@ -235,7 +236,7 @@ ${u?`<div class="card" style="max-width:520px;margin-bottom:12px"><b>✅ Local c
 async function crearLocal(){const b={nombre:$('#a_n').value.trim(),slug:$('#a_s').value.trim(),rubro:$('#a_r').value,ciudad:$('#a_c').value.trim(),dueno:$('#a_d').value.trim(),email:$('#a_e').value.trim().toLowerCase(),password:$('#a_p').value,plan:$('#a_pl').value.trim()};
 if(!b.nombre||!b.slug||!b.dueno||!b.email||b.password.length<8)return alert('Completá nombre, dirección, dueño, email y una contraseña de al menos 8 caracteres.');
 const btn=$('#a_b');btn.disabled=true;
-const{data,error}=await SB.functions.invoke('admin-crear-local',{body:b});
+const{data,error}=await SB.functions.invoke(FN_CREAR,{body:b});
 btn.disabled=false;
 if(error){let m=error.message;try{const j=await error.context.json();m=j.error||m}catch(e){}return alert('No se pudo crear el local: '+m)}
 if(data&&data.error)return alert('No se pudo crear el local: '+data.error);
