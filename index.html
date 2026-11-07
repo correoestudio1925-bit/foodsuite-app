@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google" content="notranslate">
 <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#d9531e">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>FoodSuite AI</title>
 <style>
 :root{--bg:#faf7f2;--card:#fff;--tx:#2b2118;--mu:#7a6a5c;--ac:#d9531e;--bd:#e8dfd3}
@@ -48,7 +51,7 @@ const money=n=>'$'+Number(n||0).toLocaleString('es-AR');
 const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 const ST=[['nuevo','Nuevo'],['produccion','Producción'],['entrega','Entrega'],['finalizado','Finalizado']];
 const lab=e=>(ST.find(x=>x[0]===e)||[0,e])[1];
-const VIEWS=[['dashboard','Dashboard'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['reservas','Reservas'],['productos','Productos'],['categorias','Categorías'],['qr','QR local'],['negocio','Mi negocio']];
+const VIEWS=[['dashboard','Dashboard'],['reportes','Reportes'],['ia','Asistente'],['clientes','CRM'],['pedidos','Pedidos'],['kanban','Producción'],['whatsapp','WhatsApp'],['calendario','Calendario'],['reservas','Reservas'],['productos','Productos'],['categorias','Categorías'],['qr','QR local'],['negocio','Mi negocio'],['admin','Administración']];
 const CFG={
 clientes:{t:'CRM Clientes',f:[['nombre','Nombre'],['telefono','Teléfono'],['email','Email'],['vip','VIP','select',['No','Sí']],['observaciones','Observaciones']]},
 productos:{t:'Productos',f:[['nombre','Nombre'],['precio','Precio','number'],['descripcion','Descripción']]}};
@@ -63,9 +66,11 @@ async function boot(){const{data}=await SB.auth.getSession();data.session?load()
 function showLogin(){$('nav').innerHTML='';$('#out').style.display='none';$('#emp').textContent='';
 $('#app').innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><div style="text-align:center;margin-bottom:8px"><span class="mark">${LOGO(90)}</span><div class="brand" style="font-size:30px">FoodSuite <b>AI</b></div></div><h2>Ingresar</h2><label>Email</label><input id="l_e" type="email"><label>Password</label><input id="l_p" type="password" onkeydown="if(event.key==='Enter')login()"><button class="btn" onclick="login()">Ingresar</button></div>`}
 async function login(){const{error}=await SB.auth.signInWithPassword({email:$('#l_e').value.trim(),password:$('#l_p').value});if(err(error))return;load()}
-async function logout(){clearInterval(window._poll);window._poll=null;known=null;S.eid=null;await SB.auth.signOut();showLogin()}
+async function logout(){clearInterval(window._poll);window._poll=null;known=null;S.eid=null;S.admin=false;ADM.rows=null;await SB.auth.signOut();showLogin()}
 async function load(){
 const{data:{user}}=await SB.auth.getUser();
+const{data:est}=await SB.rpc('mi_estado');if(est==='suspendido'){alert('Tu cuenta está suspendida. Comunicate con FoodSuite AI para reactivarla.');return logout()}
+const{data:adm}=await SB.rpc('es_superadmin');S.admin=adm===true;
 const{data:me,error:e1}=await SB.from('usuarios').select('empresa_id,nombre,empresas(nombre,slug,rubro,ciudad,telefono,alias_pago,sena_pct,reserva_mesa)').eq('id',user.id).single();
 if(e1||!me){alert('Tu usuario no está vinculado a ninguna empresa.');return logout()}
 S.eid=me.empresa_id;S.nombre=me.empresas?.nombre||'';S.ciudad=me.empresas?.ciudad||'';S.telefono=me.empresas?.telefono||'';S.alias=me.empresas?.alias_pago||'';S.sena=me.empresas?.sena_pct??50;S.rm=me.empresas?.reserva_mesa!==false;S.slug=me.empresas?.slug;S.rubro=me.empresas?.rubro;$('#emp').textContent='· '+(S.nombre||'Gastronómico');document.title=(S.nombre||'Gastronómico')+' · FoodSuite AI';
@@ -73,7 +78,7 @@ const[c,p,o,ct,rv]=await Promise.all([SB.from('clientes').select('*').order('nom
 if(err(c.error||p.error||o.error||ct.error||rv.error))return;
 S.clientes=c.data;S.productos=p.data;S.pedidos=o.data;S.categorias=ct.data;S.reservas=rv.data;$('#out').style.display='';render();if(!window._poll){window._poll=setInterval(chequear,20000);chequear()}}
 function go(v){view=v;render()}
-function render(){$('nav').innerHTML=VIEWS.map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]();if(view==='qr')drawQR()}
+function render(){$('nav').innerHTML=VIEWS.filter(([k])=>k!=='admin'||S.admin).map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[view]();if(view==='qr')drawQR()}
 
 const V={
 dashboard(){const m=today().slice(0,7),P=S.pedidos.filter(o=>(o.fecha_entrega||o.creado_en||'').slice(0,7)===m),t=P.reduce((s,o)=>s+Number(o.total),0),n=P.length;
@@ -133,7 +138,7 @@ async function resEst(id,e){const{error}=await SB.from('reservas').update({estad
 const MARK=`<g transform="rotate(-22 92 62)"><rect x="85" y="22" width="14" height="22" rx="4"/><rect x="89" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="93" y="27" width="2" height="12" rx="1" fill="var(--bg)"/><rect x="90.5" y="42" width="3" height="40" rx="1.5"/></g><g transform="rotate(22 168 62)"><ellipse cx="168" cy="32" rx="8" ry="12"/><rect x="166.5" y="42" width="3" height="40" rx="1.5"/></g><circle cx="112" cy="30" r="13"/><circle cx="130" cy="24" r="15"/><circle cx="148" cy="30" r="13"/><rect x="108" y="30" width="44" height="18" rx="3"/><rect x="108" y="41" width="44" height="2.5" fill="var(--bg)"/><ellipse cx="130" cy="64" rx="20" ry="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="122" cy="60" r="2.6"/><circle cx="138" cy="60" r="2.6"/><path d="M130 69C124 66 116 68 113 72C117 72 120 75 125 73C127 72.5 129 71.5 130 71C131 71.5 133 72.5 135 73C140 75 143 72 147 72C144 68 136 66 130 69Z"/>`;
 const LOGO=w=>`<svg width="${w}" height="${Math.round(w*.75)}" viewBox="70 10 120 90" fill="currentColor" xmlns="http://www.w3.org/2000/svg">${MARK}</svg>`;
 const RUBROS=['Panadería','Pastelería','Cafetería','Restaurante','Rotisería','Heladería','Otro'];
-V.negocio=()=>`<h2>Mi negocio</h2><div class="card" style="max-width:460px"><label>Nombre del local (se muestra arriba en la app y en el catálogo)</label><input id="n_n" value="${esc(S.nombre)}" placeholder="Ej: Panadería La Espiga"><label>Rubro</label><select id="n_r">${[...new Set([S.rubro,...RUBROS].filter(Boolean))].map(r=>`<option ${S.rubro===r?'selected':''}>${esc(r)}</option>`).join('')}</select><label>Ciudad</label><input id="n_c" value="${esc(S.ciudad)}"><label>WhatsApp del local (con código de país, sin + ni espacios. Ej: 5493874123456)</label><input id="n_tel" value="${esc(S.telefono)}"><label>Alias o CBU para recibir señas y pagos</label><input id="n_al" value="${esc(S.alias)}"><label>Seña para reservas de pedido (% del total, 0 = sin seña)</label><input id="n_se" type="number" min="0" max="100" value="${S.sena}"><label>¿Aceptás reservas de mesa?</label><select id="n_rm"><option ${S.rm?'selected':''}>Sí</option><option ${S.rm?'':'selected'}>No</option></select><button class="btn" onclick="svNeg()">Guardar</button><p class="mu">Dirección de tu catálogo: <b>${esc(urlBase())}</b><br>La parte final (<b>${esc(S.slug)}</b>) no se cambia para no romper los QR impresos.</p></div>`;
+V.negocio=()=>`<h2>Mi negocio</h2><div class="card" style="max-width:460px"><label>Nombre del local (se muestra arriba en la app y en el catálogo)</label><input id="n_n" value="${esc(S.nombre)}" placeholder="Ej: Panadería La Espiga"><label>Rubro</label><select id="n_r">${[...new Set([S.rubro,...RUBROS].filter(Boolean))].map(r=>`<option ${S.rubro===r?'selected':''}>${esc(r)}</option>`).join('')}</select><label>Ciudad</label><input id="n_c" value="${esc(S.ciudad)}"><label>WhatsApp del local (con código de país, sin + ni espacios. Ej: 5493874123456)</label><input id="n_tel" value="${esc(S.telefono)}"><label>Alias o CBU para recibir señas y pagos</label><input id="n_al" value="${esc(S.alias)}"><label>Seña para reservas de pedido (% del total, 0 = sin seña)</label><input id="n_se" type="number" min="0" max="100" value="${S.sena}"><label>¿Aceptás reservas de mesa?</label><select id="n_rm"><option ${S.rm?'selected':''}>Sí</option><option ${S.rm?'':'selected'}>No</option></select><button class="btn" onclick="svNeg()">Guardar</button><p class="mu">Dirección de tu catálogo: <b>${esc(urlBase())}</b><br>La parte final (<b>${esc(S.slug)}</b>) no se cambia para no romper los QR impresos.</p></div><div class="card" style="max-width:460px;margin-top:12px"><b>Cambiar mi contraseña</b><label>Nueva contraseña (mínimo 8 caracteres)</label><input id="pw1" type="password" autocomplete="new-password"><button class="btn" onclick="cambiarPw()">Cambiar contraseña</button></div>`;
 async function svNeg(){const{error}=await SB.from('empresas').update({nombre:$('#n_n').value.trim()||'Gastronómico',rubro:$('#n_r').value,ciudad:$('#n_c').value.trim()||null,telefono:$('#n_tel').value.replace(/\D/g,'')||null,alias_pago:$('#n_al').value.trim()||null,sena_pct:Math.min(100,Math.max(0,+$('#n_se').value||0)),reserva_mesa:$('#n_rm').value==='Sí'}).eq('id',S.eid);if(err(error))return;load()}
 const fmt=d=>d?String(d).split('-').reverse().join('/'):'';
 const waNum=t=>{let d=String(t||'').replace(/\D/g,'').replace(/^0+/,'');if(d.startsWith('54'))return d.startsWith('549')?d:'549'+d.slice(2);return d.length===10?'549'+d:d};
@@ -155,6 +160,89 @@ if(p.error||r.error)return;
 if(known){const np=p.data.filter(x=>!known.has('p'+x.id)),nr=r.data.filter(x=>!known.has('r'+x.id));
 if(np.length||nr.length){aviso([...np.map(x=>x.tipo==='mesa'?'Nuevo pedido · Mesa '+x.mesa:'Nuevo pedido #'+x.numero),...nr.map(()=>'Nueva reserva de mesa')].join(' · '));known=new Set([...known,...np.map(x=>'p'+x.id),...nr.map(x=>'r'+x.id)]);await load();return}}
 known=new Set([...(known||[]),...p.data.map(x=>'p'+x.id),...r.data.map(x=>'r'+x.id)])}
+let rp='30';
+const dias=n=>{const d=new Date();d.setDate(d.getDate()-n);return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const fp=o=>(o.fecha_entrega||o.creado_en||'').slice(0,10);
+const TIPOS={mesa:'En el local (mesa)',retiro:'Para retirar',mostrador:'Carga manual'};
+const suma=L=>L.reduce((s,o)=>s+Number(o.total),0);
+const enPer=()=>{const hoy=today(),ini=rp==='7'?dias(6):rp==='30'?dias(29):rp==='mes'?hoy.slice(0,7)+'-01':'0000-00-00';return S.pedidos.filter(o=>fp(o)>=ini&&fp(o)<=hoy)};
+const listaBar=(arr,f)=>{const mx=Math.max(1,...arr.map(x=>x[1]));return arr.map(([k,v])=>`<div class="row"><span style="min-width:90px">${esc(k)}</span><div style="flex:1;background:var(--bd);border-radius:6px"><div style="width:${v/mx*100}%;min-width:2px;height:12px;background:var(--ac);border-radius:6px"></div></div><b style="min-width:90px;text-align:right">${f(v)}</b></div>`).join('')||'<div class="mu">Sin datos en este período</div>'};
+V.reportes=()=>{const L=enPer(),t=suma(L),n=L.length,g={};
+L.forEach(o=>{const k=rp==='todo'?fp(o).slice(0,7):fp(o);g[k]=(g[k]||0)+Number(o.total)});
+const dia=Object.entries(g).sort().map(([k,v])=>[rp==='todo'?k.split('-').reverse().join('/'):k.slice(8)+'/'+k.slice(5,7),v]);
+const pr={};L.forEach(o=>(o.pedido_detalle||[]).forEach(i=>{const k=pname(i.producto_id);pr[k]=pr[k]||{u:0,m:0};pr[k].u+=i.cantidad;pr[k].m+=i.cantidad*Number(i.precio_unitario)}));
+const cl={};L.forEach(o=>{if(o.cliente_id){const k=cname(o.cliente_id);cl[k]=(cl[k]||0)+Number(o.total)}});
+const tp={};L.forEach(o=>{const k=TIPOS[o.tipo]||o.tipo;tp[k]=(tp[k]||0)+Number(o.total)});
+const topP=Object.entries(pr).sort((a,b)=>b[1].m-a[1].m).slice(0,6).map(([k,v])=>[k+' ('+v.u+' u.)',v.m]);
+const topC=Object.entries(cl).sort((a,b)=>b[1]-a[1]).slice(0,6);
+const sp=S.pedidos.filter(o=>o.tipo==='retiro'&&Number(o.sena)>0&&!o.sena_pagada).reduce((s,o)=>s+Number(o.sena),0);
+return `<h2>Reportes</h2><div>${[['7','7 días'],['30','30 días'],['mes','Este mes'],['todo','Todo']].map(([k,l])=>`<button class="btn ${rp===k?'':'g'}" onclick="rp='${k}';render()">${l}</button>`).join(' ')}</div>
+<div class="grid" style="margin-top:12px"><div class="card kpi"><small>Ventas</small><b>${money(t)}</b></div><div class="card kpi"><small>Pedidos</small><b>${n}</b></div><div class="card kpi"><small>Ticket medio</small><b>${money(n?t/n:0)}</b></div><div class="card kpi"><small>Señas pendientes</small><b>${money(sp)}</b></div></div>
+<div class="card" style="margin-bottom:10px"><b>Ventas por ${rp==='todo'?'mes':'día'}</b>${listaBar(dia,money)}</div>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><div class="card"><b>Productos que más facturan</b>${listaBar(topP,money)}</div><div class="card"><b>Mejores clientes</b>${listaBar(topC,money)}</div><div class="card"><b>Ventas según origen</b>${listaBar(Object.entries(tp),money)}</div></div>`};
+const PREG=['¿Cuál es mi mejor cliente?','¿Cuál es el producto más vendido?','¿Cuánto vendí esta semana?','¿Qué clientes no compran hace 30 días?','¿Qué productos casi no se venden?','¿Qué señas tengo pendientes?','¿Qué tengo para hoy?'];
+const nz=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+V.ia=()=>`<h2>Asistente</h2><p class="mu">Preguntale a tu negocio: responde con los datos reales de tu local.</p><div class="card"><div class="qrs">${PREG.map(q=>`<button class="btn g" onclick="ask(this.textContent)">${q}</button>`).join('')}</div><input id="q" placeholder="Escribí tu pregunta..." onkeydown="if(event.key==='Enter')ask(this.value)"><button class="btn" onclick="ask($('#q').value)">Preguntar</button><div id="ans" style="margin-top:12px"></div></div>`;
+function ask(q){const t=nz(q),hoy=today();let a='';
+const ult=c=>S.pedidos.filter(o=>o.cliente_id===c.id).map(fp).sort().pop();
+if(/menos|poco|casi no|no se vende/.test(t)&&/producto|vende|plato/.test(t)){
+const u={};S.productos.forEach(p=>u[p.id]=0);S.pedidos.forEach(o=>(o.pedido_detalle||[]).forEach(i=>{u[i.producto_id]=(u[i.producto_id]||0)+i.cantidad}));
+const L=S.productos.map(p=>[p.nombre,u[p.id]||0]).sort((x,y)=>x[1]-y[1]).slice(0,5);
+a=L.length?`<b>Los que menos se venden:</b>${L.map(([n,v])=>`<div>${esc(n)} · ${v?v+' u.':'sin ventas'}</div>`).join('')}<p class="mu">Podrías ofrecerlos en promoción o revisar su foto y descripción.</p>`:'Todavía no cargaste productos.'}
+else if(/no compra|inactiv|hace 30|dejaron|recuper|volver/.test(t)){
+const lim=dias(30),L=S.clientes.map(c=>[c,ult(c)]).filter(([c,u])=>!u||u<lim).slice(0,8);
+a=L.length?`<b>Hace más de 30 días que no compran:</b>${L.map(([c,u])=>`<div class="row"><span>${esc(c.nombre)} <span class="mu">· ${u?'última compra '+fmt(u):'nunca compró'}</span></span>${c.telefono?`<a class="btn g" target="_blank" rel="noopener" href="https://wa.me/${waNum(c.telefono)}?text=${encodeURIComponent('Hola '+c.nombre+'! Hace tiempo que no te vemos por '+(S.nombre||'nuestro local')+'. Tenemos novedades en la carta, ¿te esperamos pronto?')}">WhatsApp</a>`:''}</div>`).join('')}`:'Todos tus clientes compraron en los últimos 30 días.'}
+else if(/mejor cliente|mas compra|quien compra|cliente.*(top|vip)/.test(t)){
+const m={};S.pedidos.forEach(o=>{if(o.cliente_id){m[o.cliente_id]=m[o.cliente_id]||{n:0,t:0};m[o.cliente_id].n++;m[o.cliente_id].t+=Number(o.total)}});
+const L=Object.entries(m).sort((x,y)=>y[1].t-x[1].t).slice(0,3);
+a=L.length?L.map(([id,v],i)=>`<div>${i?'':'🏆 '}<b>${esc(cname(id))}</b> · ${v.n} compra${v.n>1?'s':''} · ${money(v.t)}</div>`).join(''):'Todavía no hay compras de clientes registrados.'}
+else if(/semana/.test(t)&&/vend|venta|factur|gane/.test(t)){
+const a1=S.pedidos.filter(o=>fp(o)>=dias(6)&&fp(o)<=hoy),a0=S.pedidos.filter(o=>fp(o)>=dias(13)&&fp(o)<dias(6)),x=suma(a1),y=suma(a0);
+a=`<b>${money(x)}</b> en ${a1.length} pedido${a1.length===1?'':'s'} en los últimos 7 días.`+(y>0?` Es un <b>${Math.abs(Math.round((x-y)/y*100))}% ${x>=y?'más':'menos'}</b> que la semana anterior (${money(y)}).`:' No hay ventas en la semana anterior para comparar.')}
+else if(/\bmes\b/.test(t)&&/vend|venta|factur|gane/.test(t)){
+const L=S.pedidos.filter(o=>fp(o).slice(0,7)===hoy.slice(0,7)&&fp(o)<=hoy);a=`<b>${money(suma(L))}</b> en ${L.length} pedido${L.length===1?'':'s'} este mes.`}
+else if(/producto|vendido|vende|popular|plato/.test(t)){
+const u={};S.pedidos.forEach(o=>(o.pedido_detalle||[]).forEach(i=>{const k=pname(i.producto_id);u[k]=u[k]||{u:0,m:0};u[k].u+=i.cantidad;u[k].m+=i.cantidad*Number(i.precio_unitario)}));
+const L=Object.entries(u).sort((x,y)=>y[1].u-x[1].u).slice(0,3);
+a=L.length?L.map(([k,v],i)=>`<div>${i?'':'🏆 '}<b>${esc(k)}</b> · ${v.u} vendidos · ${money(v.m)}</div>`).join(''):'Todavía no hay ventas.'}
+else if(/sena/.test(t)){
+const L=S.pedidos.filter(o=>o.tipo==='retiro'&&Number(o.sena)>0&&!o.sena_pagada);
+a=L.length?`<b>${L.length} seña${L.length>1?'s':''} pendiente${L.length>1?'s':''} por ${money(L.reduce((s,o)=>s+Number(o.sena),0))}:</b>${L.map(o=>`<div>#${o.numero} ${esc(quien(o))} · ${money(o.sena)} · retira el ${fmt(o.fecha_entrega)}</div>`).join('')}<p class="mu">Marcalas como recibidas desde Pedidos.</p>`:'No tenés señas pendientes.'}
+else if(/hoy|entregar|retirar|agenda/.test(t)){
+const L=S.pedidos.filter(o=>o.fecha_entrega===hoy&&o.tipo!=='mesa'),R=S.reservas.filter(r=>r.fecha===hoy&&r.estado!=='cancelada');
+a=L.length+R.length?`<b>Para hoy:</b>${L.map(o=>`<div>🛍️ ${(o.hora||'').slice(0,5)} #${o.numero} ${esc(quien(o))} · ${esc(itxt(o))}</div>`).join('')}${R.map(r=>`<div>🪑 ${(r.hora||'').slice(0,5)} ${esc(resNom(r))} · ${r.personas} persona${r.personas>1?'s':''} · ${r.estado}</div>`).join('')}`:'No tenés pedidos para retirar ni reservas hoy.'}
+else if(/reserva/.test(t)){
+const R=S.reservas.filter(r=>r.fecha>=hoy&&r.estado==='pendiente');
+a=R.length?`<b>Reservas pendientes de confirmar:</b>${R.map(r=>`<div>🪑 ${fmt(r.fecha)} ${(r.hora||'').slice(0,5)} · ${esc(resNom(r))} · ${r.personas} persona${r.personas>1?'s':''}</div>`).join('')}`:'No hay reservas pendientes.'}
+else a='No entendí la pregunta. Probá con las sugeridas de arriba: mejor cliente, producto más vendido, ventas de la semana, clientes que no compran, señas pendientes o qué tenés para hoy.';
+$('#ans').innerHTML=a}
+async function cambiarPw(){const p=$('#pw1').value;if(p.length<8)return alert('La contraseña debe tener al menos 8 caracteres');const{error}=await SB.auth.updateUser({password:p});if(err(error))return;$('#pw1').value='';alert('Contraseña cambiada')}
+let ADM={rows:null,ult:null};
+const slugify=t=>nz(t).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+async function cargarAdmin(){const{data,error}=await SB.rpc('admin_locales');if(err(error))return;ADM.rows=data;render()}
+V.admin=()=>{if(!S.admin)return '<p>No tenés acceso a esta sección.</p>';
+if(!ADM.rows){cargarAdmin();return '<h2>Administración</h2><p class="mu">Cargando locales…</p>'}
+const R=ADM.rows,col=e=>e==='activo'?'#1f8a4c':'#c0392b';
+const u=ADM.ult,base=new URL('./',location.href).href;
+const msg=u?`Hola ${u.dueno}! Ya está listo tu acceso a FoodSuite AI para ${u.nombre}.\n\nApp: ${base}\nEmail: ${u.email}\nContraseña temporal: ${u.password}\n\nTu carta para los clientes: ${base}pedir.html?e=${u.slug}\n\nTe recomiendo cambiar la contraseña desde Mi negocio apenas ingreses.`:'';
+return `<h2>Administración <span class="mu" style="font-size:14px">(solo la ves vos)</span></h2>
+<div class="grid"><div class="card kpi"><small>Locales</small><b>${R.length}</b></div><div class="card kpi"><small>Activos</small><b>${R.filter(r=>r.estado==='activo').length}</b></div><div class="card kpi"><small>Suspendidos</small><b>${R.filter(r=>r.estado!=='activo').length}</b></div><div class="card kpi"><small>Pedidos totales</small><b>${R.reduce((s,r)=>s+Number(r.pedidos),0)}</b></div></div>
+<div class="card scroll"><table><tr><th>Local</th><th>Rubro</th><th>Ciudad</th><th>Dueño</th><th>Usuarios</th><th>Pedidos</th><th>Último pedido</th><th>Plan</th><th>Vence</th><th>Estado</th><th></th></tr>
+${R.map(r=>`<tr><td>${esc(r.nombre)}<br><small class="mu">${esc(r.slug)}</small></td><td>${esc(r.rubro)}</td><td>${esc(r.ciudad)}</td><td>${esc(r.email)}</td><td>${r.usuarios}</td><td>${r.pedidos}</td><td>${r.ultimo_pedido?fmt(r.ultimo_pedido.slice(0,10)):'—'}</td><td>${esc(r.plan)}</td><td>${r.vence?fmt(r.vence):'—'}</td><td><b style="color:${col(r.estado)}">${r.estado}</b></td><td><button class="btn g" onclick="admGest('${r.id}')">Gestionar</button></td></tr>`).join('')}</table></div>
+<h2 style="margin-top:18px">Nuevo local</h2>
+${u?`<div class="card" style="max-width:520px;margin-bottom:12px"><b>✅ Local creado</b><p class="mu">Copiá este mensaje y mandáselo al dueño:</p><textarea id="a_msg" rows="9" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit">${esc(msg)}</textarea><button class="btn" onclick="navigator.clipboard.writeText($('#a_msg').value);alert('Copiado')">Copiar mensaje</button></div>`:''}
+<div class="card" style="max-width:520px"><label>Nombre del local</label><input id="a_n" oninput="$('#a_s').value=slugify(this.value)" placeholder="Ej: Panadería La Espiga"><label>Dirección del catálogo (sin espacios ni tildes; después no se cambia)</label><input id="a_s"><label>Rubro</label><select id="a_r">${RUBROS.map(r=>`<option>${r}</option>`).join('')}</select><label>Ciudad</label><input id="a_c"><label>Nombre del dueño</label><input id="a_d"><label>Email del dueño</label><input id="a_e" type="email"><label>Contraseña temporal (mínimo 8 caracteres)</label><input id="a_p"><label>Plan</label><input id="a_pl" value="prueba"><button class="btn" id="a_b" onclick="crearLocal()">Crear local</button></div>`};
+async function crearLocal(){const b={nombre:$('#a_n').value.trim(),slug:$('#a_s').value.trim(),rubro:$('#a_r').value,ciudad:$('#a_c').value.trim(),dueno:$('#a_d').value.trim(),email:$('#a_e').value.trim().toLowerCase(),password:$('#a_p').value,plan:$('#a_pl').value.trim()};
+if(!b.nombre||!b.slug||!b.dueno||!b.email||b.password.length<8)return alert('Completá nombre, dirección, dueño, email y una contraseña de al menos 8 caracteres.');
+const btn=$('#a_b');btn.disabled=true;
+const{data,error}=await SB.functions.invoke('admin-crear-local',{body:b});
+btn.disabled=false;
+if(error){let m=error.message;try{const j=await error.context.json();m=j.error||m}catch(e){}return alert('No se pudo crear el local: '+m)}
+if(data&&data.error)return alert('No se pudo crear el local: '+data.error);
+ADM.ult=b;ADM.rows=null;render()}
+function admGest(id){const r=ADM.rows.find(x=>x.id===id);
+$('#dbody').innerHTML=`<h3>${esc(r.nombre)}</h3><label>Estado</label><select id="g_e"><option ${r.estado==='activo'?'selected':''}>activo</option><option ${r.estado==='suspendido'?'selected':''}>suspendido</option></select><label>Plan</label><input id="g_p" value="${esc(r.plan)}" placeholder="prueba, mensual, anual…"><label>Vence (recordatorio de cobro)</label><input id="g_v" type="date" value="${r.vence||''}"><p class="mu">Si suspendés un local, sus usuarios ya no pueden ingresar y su catálogo deja de mostrarse. Sus datos no se borran.</p><button class="btn" onclick="admGuardar('${id}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
+async function admGuardar(id){const{error}=await SB.rpc('admin_actualizar_local',{p_id:id,p_estado:$('#g_e').value,p_plan:$('#g_p').value,p_vence:$('#g_v').value||null});if(err(error))return;$('#dlg').close();ADM.rows=null;render()}
 function edit(k,id){const c=CFG[k],r=id?S[k].find(x=>x.id===id):{};
 $('#dbody').innerHTML=`<h3>${c.t}</h3>${c.f.map(([n,l,t,o])=>{const v=n==='vip'?(r.vip?'Sí':'No'):r[n];return `<label>${l}</label>`+(t==='select'?`<select id="f_${n}">${o.map(x=>`<option ${v===x?'selected':''}>${x}</option>`).join('')}</select>`:`<input id="f_${n}" type="${t||'text'}" value="${esc(v)}">`)}).join('')}${k==='productos'?'<label>Categoría</label><select id="f_cat"><option value="">Sin categoría</option>'+S.categorias.map(c=>`<option value="${c.id}" ${r.categoria_id===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')+'</select><label>Foto</label><input id="f_img" type="file" accept="image/*">':''}<button class="btn" onclick="sv('${k}','${id||''}')">Guardar</button> <button class="btn g" onclick="$('#dlg').close()">Cancelar</button>`;$('#dlg').showModal()}
 async function upImg(file){const bm=await createImageBitmap(file),sc=Math.min(1,800/Math.max(bm.width,bm.height)),cv=document.createElement('canvas');cv.width=Math.round(bm.width*sc);cv.height=Math.round(bm.height*sc);cv.getContext('2d').drawImage(bm,0,0,cv.width,cv.height);
